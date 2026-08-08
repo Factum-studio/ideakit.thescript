@@ -50,6 +50,9 @@ $config = [
             'enableAutoLogin'   => false,
             'enableSession'     => false,
         ],
+        'errorHandler' => [
+            'class' => 'core\infrastructure\handler\JsonErrorHandler',
+        ],
         'mailer' => [
             'class'     => Mailer::class,
             'viewPath'  => '@app/mail',
