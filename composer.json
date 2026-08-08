@@ -41,7 +41,10 @@
             "core\\": "core/",
             "modules\\": "modules/",
             "app\\commands\\": "commands/"
-        }
+        },
+        "files": [
+            "core/presentation/swagger/__include.php"
+        ]
     },
     "autoload-dev": {
         "psr-4": {
