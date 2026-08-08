@@ -1,0 +1,34 @@
+#!/usr/bin/env php
+<?php
+/**
+ * Yii console bootstrap file.
+ *
+ * @link https://www.yiiframework.com/
+ * @copyright Copyright (c) 2008 Yii Software LLC
+ * @license https://www.yiiframework.com/license/
+ */
+
+require __DIR__ . '/vendor/autoload.php';
+
+try {
+    $dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+    $dotenv->load();
+} catch (Dotenv\Exception\InvalidPathException $e) {
+    throw new Exception("Ой вэй, шо я вижу...\n" .
+        "Нету .env файла, понимаешь...\n" .
+        "А если нету, то и переменные не грузятся.\n" .
+        "Ты создай файлик, создай, а? cp .env.example .env\n" .
+        "\nВот подробности, ну так, поглядеть \"на умном\": " . $e->getMessage()
+    );
+}
+
+defined('YII_DEBUG') or define('YII_DEBUG', true);
+defined('YII_ENV') or define('YII_ENV', 'dev');
+
+require __DIR__ . '/vendor/yiisoft/yii2/Yii.php';
+
+$config = require __DIR__ . '/config/console.php';
+
+$application = new yii\console\Application($config);
+$exitCode = $application->run();
+exit($exitCode);
