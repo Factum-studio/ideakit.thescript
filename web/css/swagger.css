@@ -1,0 +1,260 @@
+/* ---------- Базовые цвета ---------- */
+:root {
+    /* Основные цвета */
+    --primary: #E6E9EE;
+    --green: #6EE7B7;
+    --blue: #6BA7FF;
+    --secondary: #ADB3BD;
+    --error: #FF6B6B;
+    --black: #0B0D10;
+
+    /* Цвета с прозрачностью */
+    --background-4: rgba(255, 255, 255, 0.04);      /* фон элементов с 4% белого */
+    --spacer-20: rgba(255, 255, 255, 0.2);          /* разделители */
+    --bg-blue-20: rgba(107, 167, 255, 0.2);         /* синий фон 20% */
+    --bg-green-20: rgba(110, 231, 183, 0.2);        /* зелёный фон 20% */
+    --bg-white-50: rgba(173, 179, 189, 0.5);        /* «белый» фон с оттенком secondary и 50% */
+    --bg-blue-light-6: rgba(107, 167, 255, 0.06);   /* светло-синий 6% */
+    --bg-green-light-4: rgba(110, 231, 183, 0.04);  /* светло-зелёный 4% */
+
+    /* Иные */
+    --bg-blue-s-1: rgba(107, 167, 255, 0.3);
+    --bg-red-s-1: rgba(255, 107, 107, 0.2);
+    --green-s-1: rgb(162, 252, 162);
+}
+
+/* Общий фон страницы */
+body {
+    background-color: var(--black);
+    margin: 0;
+    padding: 0;
+    font-family: sans-serif;
+}
+
+/* Контейнер Swagger UI */
+.swagger-ui {
+    color: var(--primary);
+}
+
+/* ---------- Переопределение стилей Swagger UI ---------- */
+.swagger-ui .info,
+.swagger-ui .scheme-container,
+.swagger-ui .opblock,
+.swagger-ui .opblock .opblock-summary,
+.swagger-ui .opblock .opblock-section,
+.swagger-ui .model-box,
+.swagger-ui .models,
+.swagger-ui .model-container,
+.swagger-ui .responses-inner,
+.swagger-ui .dialog-ux .modal-ux-content,
+.swagger-ui .dialog-ux .modal-ux-header {
+    border-color: var(--spacer-20) !important;
+    border-radius: 6px;
+}
+
+/* Текст и ссылки */
+.swagger-ui,
+.swagger-ui .info .title,
+.swagger-ui .info li,
+.swagger-ui .info p,
+.swagger-ui .info a,
+.swagger-ui .opblock .opblock-summary-path,
+.swagger-ui .opblock .opblock-summary-description,
+.swagger-ui .tab li,
+.swagger-ui .response-col_status,
+.swagger-ui .response-col_description,
+.swagger-ui .parameters-col_name,
+.swagger-ui .parameters-col_description,
+.swagger-ui .model-title,
+.swagger-ui .model,
+.swagger-ui .model-toggle,
+.swagger-ui .prop-name,
+.swagger-ui .prop-type,
+.swagger-ui .prop-format,
+.swagger-ui .btn {
+    color: var(--primary) !important;
+}
+
+/* Заголовки */
+.swagger-ui .info .title,
+.swagger-ui h2,
+.swagger-ui h3,
+.swagger-ui h4,
+.swagger-ui h5 {
+    color: var(--primary) !important;
+}
+
+/* Кнопки */
+.swagger-ui .btn {
+    background-color: var(--bg-white-50) !important;
+    border-color: var(--spacer-20) !important;
+    color: var(--primary) !important;
+}
+.swagger-ui .btn:hover {
+    background-color: var(--bg-blue-light-6) !important;
+    border-color: var(--blue) !important;
+}
+
+/* Акцентные кнопки (execute) */
+.swagger-ui .btn.execute {
+    background-color: var(--bg-green-20) !important;
+    border-color: var(--green) !important;
+    color: var(--green) !important;
+}
+.swagger-ui .btn.execute:hover {
+    background-color: var(--green) !important;
+    color: var(--black) !important;
+}
+
+/* Выпадающие списки, инпуты */
+.swagger-ui select,
+.swagger-ui input[type=text] {
+    background-color: var(--background-4) !important;
+    border-color: var(--spacer-20) !important;
+    color: var(--primary) !important;
+}
+.swagger-ui select:focus,
+.swagger-ui input[type=text]:focus {
+    border-color: var(--blue) !important;
+}
+
+/* Разделители */
+.swagger-ui .opblock .opblock-section-header,
+.swagger-ui .responses-header,
+.swagger-ui .parameters-header,
+.swagger-ui .model-container,
+.swagger-ui hr {
+    border-color: var(--spacer-20) !important;
+    background: transparent !important;
+}
+
+/* Ссылки */
+.swagger-ui a {
+    color: var(--blue) !important;
+}
+.swagger-ui a:hover {
+    color: var(--green) !important;
+}
+
+/* Методы (GET, POST и т.д.) */
+.swagger-ui .opblock.opblock-get .opblock-summary-method {
+    background-color: var(--bg-blue-light-6) !important;
+    color: var(--blue) !important;
+}
+.swagger-ui .opblock.opblock-post .opblock-summary-method {
+    background-color: var(--bg-green-light-4) !important;
+    color: var(--green) !important;
+}
+.swagger-ui .opblock.opblock-put .opblock-summary-method {
+    background-color: var(--bg-blue-s-1) !important;
+    color: #FFB86B !important; /* оранжевый для PUT, можно настроить */
+}
+.swagger-ui .opblock.opblock-delete .opblock-summary-method {
+    background-color: var(--bg-red-s-1) !important;
+    color: var(--error) !important;
+}
+/* прочие методы */
+.swagger-ui .opblock .opblock-summary-method {
+    background-color: var(--bg-white-50) !important;
+    color: var(--secondary) !important;
+}
+
+/* Бейджи и тэги */
+.swagger-ui .opblock .opblock-summary-path,
+.swagger-ui .opblock-tag {
+    color: var(--primary) !important;
+    border-bottom-color: var(--spacer-20) !important;
+}
+
+/* Модальные окна */
+.swagger-ui .dialog-ux .modal-ux {
+    background-color: var(--black) !important;
+    border: 1px solid var(--spacer-20) !important;
+}
+.swagger-ui .dialog-ux .modal-ux-header {
+    border-bottom-color: var(--spacer-20) !important;
+}
+
+/* ---------- Логотип ---------- */
+.logo {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 1000;
+    width: 300px;
+    transition: opacity 0.2s;
+    pointer-events: none;
+    overflow: hidden;
+    opacity: .6;
+}
+.logo * {
+    width: 100%;
+}
+/* ---------- Другие блоки ---------- */
+.swagger-ui .parameter__name.required:after {
+    color: var(--error);
+}
+.swagger-ui textarea {
+    background: transparent !important;
+    border: 1px solid var(--bg-white-50) !important;
+    color: var(--primary) !important;
+}
+.swagger-ui .response-control-media-type__accept-message {
+    color: var(--green-s-1) !important;
+}
+.arrow {
+    color: white !important;
+}
+.information-container,
+.scheme-container,
+.opblock-tag,
+.models {
+    background: var(--background-4) !important;
+}
+.information-container {
+    padding-top: 20px !important;
+    padding-bottom: 20px !important;
+}
+.renderedMarkdown {
+    color: var(--primary) !important;
+}
+.opblock.is-open {
+    background: var(--background-4) !important;
+}
+.opblock-summary button:focus {
+    outline: none !important;
+}
+.information-container {
+    min-width: 100% !important;
+}
+.swagger-ui .wrapper {
+    max-width: none !important;
+}
+.operation-tag-content code {
+    background: transparent !important;
+    border: none;
+    line-height: 100%;
+}
+code {
+    background: var(--bg-red-s-1) !important;
+    border: 1px solid var(--bg-white-50);
+    line-height: 200%;
+    border-radius: 13px;
+}
+/* modules group */
+#operations-tag-users > a,
+#operations-tag-companies > a,
+#operations-tag-stream > a,
+#operations-tag-feedback > a,
+#operations-tag-authors > a {
+    color: lightblue !important;
+}
+#operations-tag-time-intervals > a,
+#operations-tag-task-stickers > a,
+#operations-tag-tasks > a,
+#operations-tag-stickers > a,
+#operations-tag-task-priorities > a,
+#operations-tag-comments > a,
+#operations-tag-board-columns > a {
+    color: lightgreen !important;
+}
