@@ -82,6 +82,10 @@ $config = [
                     'docs/swagger/json' => 'swagger/json',
                     'docs/swagger'      => 'swagger/ui',
 
+                    // Project documentation
+                    'docs' => 'docs/ui',
+                    'docs/<page:.*>' => 'docs/ui',
+
                     // Дефолтный маршрут для OPTIONS (CORS)
                     'OPTIONS <any:.*>' => 'site/options',
                 ]

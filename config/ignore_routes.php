@@ -5,6 +5,7 @@ return [
         'exact' => [
         ],
         'startsWith' => [
+            'docs',
         ],
         'regex' => [
         ],
