@@ -1,0 +1,19 @@
+@startuml
+actor Клиент
+participant "Controller" as C
+participant "JsonErrorHandler" as H
+participant "Response" as R
+
+Клиент -> C: GET /api/users
+activate C
+C -> C: выполнение действия
+C <-- C: исключение (например, HttpException)
+C -> H: обработка исключения
+activate H
+H -> H: определить статус
+H -> H: сформировать ErrorDto
+H -> R: установить код и данные
+R --> Клиент: JSON-ответ с ошибкой
+deactivate H
+deactivate C
+@enduml

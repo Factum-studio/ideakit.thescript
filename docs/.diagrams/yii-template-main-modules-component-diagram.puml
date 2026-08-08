@@ -1,0 +1,15 @@
+@startuml
+node "Веб-приложение" {
+    [Presentation Layer] as P
+    [Application Layer] as A
+    [Domain Layer] as D
+    [Infrastructure Layer] as I
+    [Security] as S
+}
+
+P --> A : использует
+A --> D : использует
+I ..> D : реализует порты
+P --> S : аутентификация
+I --> S : использует
+@enduml

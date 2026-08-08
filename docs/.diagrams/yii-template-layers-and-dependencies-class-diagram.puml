@@ -1,0 +1,68 @@
+@startuml
+!define PACKAGE #DDDDDD
+
+package "Presentation" {
+    class BaseController {
+        +item($dto): ItemDto
+        +collection(items, total, page, limit): CollectionDto
+        +error(message, code, details): ErrorDto
+        +success(data, message): SuccessDto
+        +getUserId(): ?int
+        +getUserIdentity(): ?YiiIdentity
+        +getLimit(): int
+        +getPage(): int
+    }
+    class SwaggerController
+    class DocsController
+}
+
+package "Application" {
+    class CollectionDto
+    class ErrorDto
+    class ItemDto
+    class SuccessDto
+}
+
+package "Domain" {
+    class IdRange {
+        -ids: array
+        +__construct(input: string)
+        +fromString(input: ?string): self
+        +fromArray(ids: array): self
+        +empty(): self
+        +toArray(): array
+        +contains(id: int): bool
+        +isEmpty(): bool
+        +count(): int
+        +getFirst(): ?int
+        +getLast(): ?int
+    }
+}
+
+package "Infrastructure" {
+    class JsonErrorHandler {
+        +renderException(exception)
+        -getTraceAsArray(exception): array
+        -formatArgs(args): array
+    }
+}
+
+package "Security" {
+    class YiiIdentity implements IdentityInterface {
+        +getId(): string
+        +getAuthKey(): ?string
+        +validateAuthKey(authKey): bool
+        +findIdentity(id)
+        +findIdentityByAccessToken(token, type)
+    }
+}
+
+BaseController --> CollectionDto
+BaseController --> ErrorDto
+BaseController --> ItemDto
+BaseController --> SuccessDto
+BaseController --> IdRange : использует
+BaseController --> YiiIdentity : получает
+JsonErrorHandler --> ErrorDto : создаёт
+YiiIdentity ..> BaseController : используется в
+@enduml
