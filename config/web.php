@@ -45,6 +45,11 @@ $config = [
         'cache' => [
             'class' => 'yii\caching\FileCache',
         ],
+        'user' => [
+            'identityClass'     => YiiIdentity::class,
+            'enableAutoLogin'   => false,
+            'enableSession'     => false,
+        ],
         'mailer' => [
             'class'     => Mailer::class,
             'viewPath'  => '@app/mail',
