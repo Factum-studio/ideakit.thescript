@@ -14,7 +14,7 @@ final class YiiIdentity implements IdentityInterface
 
     public function getId(): string
     {
-        return;
+        return "id";
         //TODO: impl getting id
     }
 

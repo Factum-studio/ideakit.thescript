@@ -11,7 +11,7 @@ use yii\web\HttpException;
 
 class JsonErrorHandler extends ErrorHandler
 {
-    protected function renderException($exception)
+    protected function renderException($exception): void
     {
         $response = \Yii::$app->response ?? new Response();
 
@@ -29,7 +29,7 @@ class JsonErrorHandler extends ErrorHandler
             : [];
 
         if (YII_DEBUG) {
-            $_ENV['DEBUG_LVL'] == (1 | 2 | 3) ? $details['trace'] = $this->getTraceAsArray($exception) : null;
+            in_array($_ENV['DEBUG_LVL'], [1, 2, 3]) ? $details['trace'] = $this->getTraceAsArray($exception) : null;
             $_ENV['DEBUG_LVL'] == (2 | 3) ? $details['request'] = [
                 'method'    => \Yii::$app->request->method,
                 'url'       => \Yii::$app->request->url,
@@ -46,7 +46,7 @@ class JsonErrorHandler extends ErrorHandler
         $response->send();
     }
 
-    private function getTraceAsArray($exception): array
+    private function getTraceAsArray(\Throwable $exception): array
     {
         $trace = [];
 

@@ -9,7 +9,7 @@ use DoctorDanila\ScriptDoc\Include\Controller as DocController;
 
 class DocsController extends YiiController
 {
-    public function actionUi()
+    public function actionUi(): void
     {
         $doc = new DocController();
         $doc->setProjectName('IDEAKIT.thescript')

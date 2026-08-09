@@ -5,10 +5,8 @@ parameters:
         - modules
     bootstrapFiles:
         - phpstan-bootstrap.php
+    checkMissingIterableValueType: false
+    reportUnmatchedIgnoredErrors: false
     ignoreErrors:
-        # предупреждения о недостающих типах для массивов
-        - '#has no value type specified in iterable type array#'
-        # ошибки, связанные с неизвестным классом Yii
         - '#Access to static property \$app on an unknown class Yii\.#'
-        - '#Constant YII_DEBUG not found\.#'
         - '#Call to static method .* on an unknown class Yii\.#'
