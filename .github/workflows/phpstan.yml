@@ -1,0 +1,65 @@
+name: PHPStan
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - '**'
+
+jobs:
+  phpstan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          tools: phpstan
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-progress --prefer-dist
+
+      - name: Determine strictness level
+        id: vars
+        run: |
+          if [[ "${{ github.event_name }}" == "push" && ( "${{ github.ref_name }}" == "dev" || "${{ github.ref_name }}" == "main" ) ]] || \
+             [[ "${{ github.event_name }}" == "pull_request" && ( "${{ github.base_ref }}" == "dev" || "${{ github.base_ref }}" == "main" ) ]]; then
+            echo "level=9" >> $GITHUB_OUTPUT
+            echo "continue_on_error=false" >> $GITHUB_OUTPUT
+          else
+            echo "level=5" >> $GITHUB_OUTPUT
+            echo "continue_on_error=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run PHPStan
+        id: phpstan
+        continue-on-error: ${{ fromJSON(steps.vars.outputs.continue_on_error) }}
+        run: |
+          phpstan analyse core modules \
+            --level=${{ steps.vars.outputs.level }} \
+            --no-progress \
+            --error-format=github
+
+      - name: Show friendly message on failure (non‑strict)
+        if: |
+          steps.vars.outputs.continue_on_error == 'true' &&
+          steps.phpstan.outcome == 'failure'
+        run: |
+          echo "⚠️  Es gibt keine schwerwiegenden Fehler in deinem Code, aber ich schlage vor, sie vor der Veröffentlichung zu korrigieren."
+          echo "📝  Исправь опечатки, проблемы с PHPDoc и мёртвый код, чтобы в будущем избежать проблем."
+
+      - name: Show friendly message on failure (strict)
+        if: |
+          steps.vars.outputs.continue_on_error == 'false' &&
+          steps.phpstan.outcome == 'failure'
+        run: |
+          echo "❌  Kritische Probleme wurden im Code gefunden. Korrigiere sie, bevor du mit ${{ github.base_ref }}."
+          echo "❌  В коде обнаружены критические проблемы. Исправь их перед слиянием с ${{ github.base_ref }}."
+          exit 418
