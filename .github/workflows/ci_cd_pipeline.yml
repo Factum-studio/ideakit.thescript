@@ -1,4 +1,4 @@
-name: CI
+name: CI & Deploy
 
 on:
   push:
@@ -91,3 +91,42 @@ jobs:
           echo "❌  Kritische Probleme wurden im Code gefunden. Korrigiere sie, bevor du mit ${{ github.base_ref }}."
           echo "❌  В коде обнаружены критические проблемы. Исправь их перед слиянием с ${{ github.base_ref }}."
           exit 418
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [linter, unclestan]
+    if: |
+      (github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'dev')) ||
+      (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'dev'))
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy with rsync
+        run: |
+          rsync -avz --delete \
+            --exclude='.env' \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            --exclude='tests/' \
+            --exclude='codeception.yml' \
+            --exclude='.gitignore' \
+            ./ ${{ secrets.SSH_USER }}@${{ secrets.HOST }}:${{ secrets.SSH_TARGET_PATH }}
+
+      - name: Install dependencies on server
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.HOST }} \
+            "cd ${{ secrets.SSH_TARGET_PATH }} && composer install --no-dev --optimize-autoloader"
+
+      - name: Clear cache (optional)
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.HOST }} \
+            "cd ${{ secrets.SSH_TARGET_PATH }} && php yii cache/flush-all || true"
