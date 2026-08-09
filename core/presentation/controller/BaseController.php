@@ -1,11 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace core\presentation\controller;
 
 use core\security\YiiIdentity;
 use yii\rest\Controller;
 use core\domain\valueObject\IdRange;
-
 use core\application\dto\CollectionDto;
 use core\application\dto\SuccessDto;
 use core\application\dto\ItemDto;
@@ -21,7 +22,8 @@ abstract class BaseController extends Controller
         return new ItemDto($dto);
     }
 
-    protected function collection(array $items, ?int $total = null, ?int $page = null, ?int $limit = null): CollectionDto {
+    protected function collection(array $items, ?int $total = null, ?int $page = null, ?int $limit = null): CollectionDto
+    {
         return new CollectionDto($items, $total, $page, $limit);
     }
 
@@ -37,7 +39,9 @@ abstract class BaseController extends Controller
 
     protected function parseIdRangeFromPath(?string $param): ?IdRange
     {
-        if ($param === null || trim($param) === '') return null;
+        if ($param === null || trim($param) === '') {
+            return null;
+        }
 
         try {
             return IdRange::fromString($param);

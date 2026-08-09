@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 return [
     'class'     => 'yii\db\Connection',
     'dsn'       => $_ENV['DB_DSN'],

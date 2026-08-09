@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace core\infrastructure\handler;
 
 use yii\web\ErrorHandler;
@@ -27,13 +29,13 @@ class JsonErrorHandler extends ErrorHandler
             : [];
 
         if (YII_DEBUG) {
-            $_ENV['DEBUG_LVL']==(1|2|3)  ? $details['trace'] = $this->getTraceAsArray($exception) : NULL;
-            $_ENV['DEBUG_LVL']==(2|3) ? $details['request'] = [
+            $_ENV['DEBUG_LVL'] == (1 | 2 | 3) ? $details['trace'] = $this->getTraceAsArray($exception) : null;
+            $_ENV['DEBUG_LVL'] == (2 | 3) ? $details['request'] = [
                 'method'    => \Yii::$app->request->method,
                 'url'       => \Yii::$app->request->url,
                 'headers'   => \Yii::$app->request->headers->toArray(),
                 'body'      => \Yii::$app->request->rawBody,
-            ] : NULL;
+            ] : null;
         }
 
         \Yii::error($exception, 'api');
@@ -57,7 +59,7 @@ class JsonErrorHandler extends ErrorHandler
                 'type'      => $item['type'] ?? '',
             ];
 
-            if ($_ENV['DEBUG_LVL']==3 && !empty($item['args'])) {
+            if ($_ENV['DEBUG_LVL'] == 3 && !empty($item['args'])) {
                 $traceItem['args'] = $this->formatArgs($item['args']);
             }
 

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use core\security\YiiIdentity;
 use yii\symfonymailer\Mailer;
 
@@ -24,11 +26,19 @@ $config = [
         $request = Yii::$app->request;
         $currentPath = $request->getPathInfo();
 
-        if (in_array($currentPath, $ignoreConfig['ignoreRoutes']['exact'])) return;
-        foreach ($ignoreConfig['ignoreRoutes']['startsWith'] as $prefix)
-            if (str_starts_with($currentPath, $prefix)) return;
-        foreach ($ignoreConfig['ignoreRoutes']['regex'] as $pattern)
-            if (preg_match($pattern, $currentPath)) return;
+        if (in_array($currentPath, $ignoreConfig['ignoreRoutes']['exact'])) {
+            return;
+        }
+        foreach ($ignoreConfig['ignoreRoutes']['startsWith'] as $prefix) {
+            if (str_starts_with($currentPath, $prefix)) {
+                return;
+            }
+        }
+        foreach ($ignoreConfig['ignoreRoutes']['regex'] as $pattern) {
+            if (preg_match($pattern, $currentPath)) {
+                return;
+            }
+        }
     },
     'modules' => $modules,
     'components' => [
@@ -88,7 +98,7 @@ $config = [
 
                     // Дефолтный маршрут для OPTIONS (CORS)
                     'OPTIONS <any:.*>' => 'site/options',
-                ]
+                ],
             ),
         ],
     ],

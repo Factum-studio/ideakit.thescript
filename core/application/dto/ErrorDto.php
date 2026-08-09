@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace core\application\dto;
 
 class ErrorDto implements \JsonSerializable
@@ -7,8 +9,9 @@ class ErrorDto implements \JsonSerializable
     public function __construct(
         public string $message,
         public int $code        = 400,
-        public array $details   = []
-    ) {}
+        public array $details   = [],
+    ) {
+    }
 
     public function jsonSerialize(): array
     {
@@ -16,7 +19,7 @@ class ErrorDto implements \JsonSerializable
             'error' => [
                 'code'      => $this->code,
                 'message'   => $this->message,
-            ]
+            ],
         ];
         if (!empty($this->details)) {
             $result['error']['details'] = $this->details;

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace core\security;
 
 use yii\web\IdentityInterface;
@@ -7,7 +9,8 @@ use yii\web\IdentityInterface;
 final class YiiIdentity implements IdentityInterface
 {
     public function __construct(
-    ) {}
+    ) {
+    }
 
     public function getId(): string
     {

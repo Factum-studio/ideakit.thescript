@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace core\application\dto;
 
 class CollectionDto implements \JsonSerializable
@@ -8,8 +10,9 @@ class CollectionDto implements \JsonSerializable
         public array $items,
         public ?int $total  = null,
         public ?int $page   = null,
-        public ?int $limit  = null
-    ) {}
+        public ?int $limit  = null,
+    ) {
+    }
 
     public function jsonSerialize(): array
     {
@@ -20,7 +23,7 @@ class CollectionDto implements \JsonSerializable
                 'total' => $this->total,
                 'page'  => $this->page,
                 'limit' => $this->limit,
-                'pages' => $this->limit ? ceil($this->total / $this->limit) : null
+                'pages' => $this->limit ? ceil($this->total / $this->limit) : null,
             ];
         }
 

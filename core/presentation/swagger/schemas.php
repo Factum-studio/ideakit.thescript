@@ -1,4 +1,6 @@
 <?php
+
+declare(strict_types=1);
 /**
  * @OA\Schema(
  *     schema="Collection",
@@ -53,4 +55,6 @@
  *     )
  * )
  */
-class MainSchemasDefinitions {}
+class MainSchemasDefinitions
+{
+}

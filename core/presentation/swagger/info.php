@@ -1,4 +1,6 @@
 <?php
+
+declare(strict_types=1);
 /**
  * @OA\Info(
  *     title="IDEAKIT.thescript",
@@ -27,4 +29,6 @@
  *     description="Используйте JWT токен для аутентификации"
  * ),
  */
-class InfoDefinitions {}
+class InfoDefinitions
+{
+}

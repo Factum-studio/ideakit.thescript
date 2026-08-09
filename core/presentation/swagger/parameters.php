@@ -1,4 +1,6 @@
 <?php
+
+declare(strict_types=1);
 /**
  * @OA\Parameter(
  *     parameter="PageParam",
@@ -29,4 +31,6 @@
  *     @OA\Schema(type="string")
  * )
  */
-class MainParamDefinitions {}
+class MainParamDefinitions
+{
+}
