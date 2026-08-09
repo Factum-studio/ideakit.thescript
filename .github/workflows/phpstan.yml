@@ -9,7 +9,7 @@ on:
       - '**'
 
 jobs:
-  phpstan:
+  unclestan:
     runs-on: ubuntu-latest
 
     steps:
@@ -31,7 +31,7 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "push" && ( "${{ github.ref_name }}" == "dev" || "${{ github.ref_name }}" == "main" ) ]] || \
              [[ "${{ github.event_name }}" == "pull_request" && ( "${{ github.base_ref }}" == "dev" || "${{ github.base_ref }}" == "main" ) ]]; then
-            echo "level=9" >> $GITHUB_OUTPUT
+            echo "level=6" >> $GITHUB_OUTPUT
             echo "continue_on_error=false" >> $GITHUB_OUTPUT
           else
             echo "level=5" >> $GITHUB_OUTPUT

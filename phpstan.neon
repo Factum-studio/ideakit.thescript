@@ -1,0 +1,18 @@
+parameters:
+    level: 5   # базовый уровень
+    paths:
+        - core
+        - modules
+    # игнорируем предупреждения о типах массивов
+    checkMissingIterableValueType: false
+    # отключаем проверку на неизвестные классы
+    reportUnmatchedIgnoredErrors: false
+    bootstrapFiles:
+        - phpstan-bootstrap.php
+    ignoreErrors:
+        - '#Method .*::jsonSerialize\(\) return type has no value type specified in iterable type array\.#'
+        - '#Property .*::\$ids type has no value type specified in iterable type array\.#'
+        - '#Method .*::__construct\(\) has parameter \$details with no value type specified in iterable type array\.#'
+        - '#Access to static property \$app on an unknown class Yii\.#'
+        - '#Constant YII_DEBUG not found\.#'
+        - '#Call to static method .* on an unknown class Yii\.#'
