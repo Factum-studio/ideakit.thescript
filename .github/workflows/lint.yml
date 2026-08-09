@@ -1,0 +1,36 @@
+name: Lint
+
+on:
+  push:
+    branches: [ dev, main ]
+  pull_request:
+    branches: [ dev, main ]
+
+jobs:
+  php-cs-fixer:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          tools: composer
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-progress --prefer-dist
+
+      - name: Run PHP-CS-Fixer (dry-run)
+        id: lint
+        run: composer lint
+        continue-on-error: true
+
+      - name: Show friendly error message on failure
+        if: steps.lint.outcome == 'failure'
+        run: |
+          echo "❌ Hallo mein Lieber. Du verstehst, dass ein solcher Code hier nicht funktionieren wird, oder? Korrigiere dieses Missverständnis, bevor niemand es sieht, ich werde dich decken)"
+          exit 418
