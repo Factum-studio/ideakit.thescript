@@ -63,6 +63,7 @@
         }
     },
     "scripts": {
+        "unclestan:6": "phpstan analyse core modules --level=6 --no-progress",
         "lint": "php-cs-fixer fix --dry-run --diff",
         "lint-fix": "php-cs-fixer fix",
         "post-install-cmd": [
