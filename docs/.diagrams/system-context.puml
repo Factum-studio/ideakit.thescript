@@ -1,0 +1,60 @@
+@startuml
+title Архитектурный контекст IDEAKIT
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam componentStyle rectangle
+
+actor "Telegram-пользователь" as User
+actor "Администратор агентства" as Admin
+cloud "Telegram Bot API" as Telegram
+cloud "Провайдер ИИ и\nвекторных представлений" as AI
+cloud "Поиск и публичные источники" as Search
+cloud "Объектное хранилище" as Storage
+
+rectangle "IDEAKIT — модульный монолит PHP/Yii2" as System {
+  component "Telegram" as Bot
+  component "AdminPortal" as Portal
+  component "Users" as Users
+  component "IdeaCatalog" as Catalog
+  component "IdeaFeed" as Feed
+  component "ContentGeneration" as Content
+  component "AgencyLeads" as Leads
+  component "Notifications" as Notifications
+  component "Фоновые процессы PHP/Yii2" as Workers
+}
+
+database "PostgreSQL\nБизнес-состояние" as DB
+database "Redis\nКэш, блокировки, ограничения частоты" as Redis
+queue "RabbitMQ\nФоновый транспорт" as MQ
+
+User --> Telegram
+Telegram --> Bot : HTTPS: вебхук и сообщения
+Admin --> Portal : HTTPS
+
+Bot --> Users
+Bot --> Feed
+Bot --> Leads
+Portal --> Catalog
+Portal --> Leads
+Portal --> Content
+
+Feed --> Catalog : публичные прикладные запросы
+Content --> Catalog : публичная прикладная команда
+Notifications --> Bot : намерение доставки
+
+System --> DB
+System --> Redis
+System --> MQ
+MQ --> Workers
+Workers --> System : команды и события
+
+Content --> AI : инфраструктурный адаптер PHP
+Content --> Search : безопасные адаптеры получения данных
+Catalog --> Storage : файлы PDF
+
+note bottom of System
+  Доменный и прикладной слои не зависят от Yii2,
+  ActiveRecord, RabbitMQ, Redis или SDK провайдера.
+end note
+@enduml

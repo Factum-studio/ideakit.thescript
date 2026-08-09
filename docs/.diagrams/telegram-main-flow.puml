@@ -1,0 +1,44 @@
+@startuml
+title Приём обновления Telegram и доставка карточки
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+
+actor "Пользователь" as User
+participant "Telegram Bot API" as Telegram
+participant "Вебхук\nYii2" as Webhook
+participant "Модуль Telegram" as Bot
+database "PostgreSQL" as DB
+queue "RabbitMQ" as MQ
+participant "Фоновый обработчик PHP" as Worker
+participant "IdeaFeed" as Feed
+
+User -> Telegram: /start или нажатие кнопки
+Telegram -> Webhook: HTTPS: обновление + секретный заголовок
+Webhook -> Webhook: Проверка секрета, размера и структуры
+Webhook -> DB: INSERT telegram_updates\n+ INSERT outbox_messages
+DB --> Webhook: COMMIT
+Webhook --> Telegram: 200 OK
+
+Bot -> DB: Ретранслятор получает PENDING
+Bot -> MQ: Публикация версионированной команды
+MQ -> Worker: Доставка не менее одного раза
+Worker -> Feed: Выполнить команду идемпотентно
+Feed -> DB: Выбрать публикацию под блокировкой пользователя\n+ создать исходящее сообщение IDEA_CARD
+DB --> Feed: COMMIT
+Worker --> MQ: ACK после COMMIT
+
+Bot -> DB: Получить аренду IDEA_CARD
+Bot -> Telegram: sendMessage
+alt Успешный ответ
+  Telegram --> Bot: message_id
+  Bot -> DB: DELIVERED + idea_impressions
+else Временная ошибка
+  Telegram --> Bot: временная ошибка / retry_after
+  Bot -> DB: RETRY_SCHEDULED
+else Ответ мог быть потерян
+  Telegram --> Bot: неоднозначный результат
+  Bot -> DB: UNKNOWN без слепого повтора
+end
+@enduml

@@ -1,0 +1,30 @@
+@startuml
+title Жизненный цикл заявки агентству
+
+skinparam backgroundColor white
+skinparam shadowing false
+
+[*] --> SUBMITTED : пользователь подтвердил\nкомментарий и согласие
+SUBMITTED --> CANCELLED : пользователь отозвал\nдо начала обработки
+SUBMITTED --> IN_REVIEW : оператор начал обработку
+IN_REVIEW --> QUALIFIED : интерес подтверждён
+IN_REVIEW --> UNQUALIFIED : заявка не прошла квалификацию
+QUALIFIED --> CONTACTED : установлен контакт
+CONTACTED --> CLOSED : работа по заявке завершена
+
+UNQUALIFIED --> [*]
+CANCELLED --> [*]
+CLOSED --> [*]
+
+note right of SUBMITTED
+  Пока заявка активна, повторная
+  заявка по той же IdeaVersion
+  не создаётся.
+end note
+
+note bottom of IN_REVIEW
+  Каждый переход сохраняет
+  инициатора, время, код причины,
+  текстовую причину и идентификатор корреляции.
+end note
+@enduml
