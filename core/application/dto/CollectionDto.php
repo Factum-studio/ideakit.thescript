@@ -6,6 +6,12 @@ namespace core\application\dto;
 
 class CollectionDto implements \JsonSerializable
 {
+    /**
+     * @param array<mixed> $items
+     * @param int|null $total
+     * @param int|null $page
+     * @param int|null $limit
+     */
     public function __construct(
         public array $items,
         public ?int $total  = null,

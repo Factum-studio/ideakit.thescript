@@ -27,6 +27,9 @@ final class IdRange
         return new self($input ?? '');
     }
 
+    /**
+     * @param array<int> $ids
+     */
     public static function fromArray(array $ids): self
     {
         return new self(implode(',', $ids));

@@ -28,6 +28,7 @@ class JsonErrorHandler extends ErrorHandler
             ? $exception->getDetails()
             : [];
 
+        // @phpstan-ignore-next-line
         if (YII_DEBUG) {
             in_array($_ENV['DEBUG_LVL'], [1, 2, 3]) ? $details['trace'] = $this->getTraceAsArray($exception) : null;
             $_ENV['DEBUG_LVL'] == (2 | 3) ? $details['request'] = [
@@ -54,7 +55,7 @@ class JsonErrorHandler extends ErrorHandler
             $traceItem = [
                 'file'      => $item['file'] ?? 'unknown',
                 'line'      => $item['line'] ?? 0,
-                'function'  => $item['function'] ?? 'unknown',
+                'function'  => $item['function'],
                 'class'     => $item['class'] ?? '',
                 'type'      => $item['type'] ?? '',
             ];
@@ -69,6 +70,9 @@ class JsonErrorHandler extends ErrorHandler
         return $trace;
     }
 
+    /**
+     * @param array<mixed> $args
+     */
     private function formatArgs(array $args): array
     {
         $formatted = [];

@@ -6,6 +6,9 @@ namespace core\application\dto;
 
 class ErrorDto implements \JsonSerializable
 {
+    /**
+     * @param array<string, mixed> $details
+     */
     public function __construct(
         public string $message,
         public int $code        = 400,

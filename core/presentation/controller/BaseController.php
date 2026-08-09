@@ -14,24 +14,36 @@ use core\application\dto\ErrorDto;
 
 abstract class BaseController extends Controller
 {
-    public $defaultPageSize = 20;
-    public $pageSizeLimit = [1, 1000];
+    public int $defaultPageSize = 20;
+    public array $pageSizeLimit = [1, 1000];
 
+    /**
+     * @param mixed $dto
+     */
     protected function item($dto): ItemDto
     {
         return new ItemDto($dto);
     }
 
+    /**
+     * @param array<mixed> $items
+     */
     protected function collection(array $items, ?int $total = null, ?int $page = null, ?int $limit = null): CollectionDto
     {
         return new CollectionDto($items, $total, $page, $limit);
     }
 
+    /**
+     * @param array<string, mixed> $details
+     */
     protected function error(string $message, int $code = 400, array $details = []): ErrorDto
     {
         return new ErrorDto($message, $code, $details);
     }
 
+    /**
+     * @param mixed $data
+     */
     protected function success($data = null, string $message = 'OK'): SuccessDto
     {
         return new SuccessDto($data, $message);
