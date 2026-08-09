@@ -42,3 +42,6 @@ tests/_support/_generated
 #dev scancore
 scancore_output.txt
 stats*
+
+#linter
+.php-cs-fixer.cache
