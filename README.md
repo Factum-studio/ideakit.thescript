@@ -1,6 +1,6 @@
 # IDEAKIT
 
-[![PHP Version](https://img.shields.io/badge/PHP-8.4.23-777BB4?logo=php)](https://php.net)
+[![PHP Version](https://img.shields.io/badge/PHP-8.1%2B-777BB4?logo=php)](https://php.net)
 [![Yii Framework](https://img.shields.io/badge/Yii-2.0.55-40b3d8?logo=yii)](https://www.yiiframework.com/)
 [![License: Script Agency](https://img.shields.io/badge/License-Script%20Agency%20Proprietary-blue.svg)](./LICENSE.md)
 
