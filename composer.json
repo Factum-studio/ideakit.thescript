@@ -63,7 +63,14 @@
         }
     },
     "scripts": {
+        "unclestan": "phpstan analyse core modules --no-progress",
         "unclestan:6": "phpstan analyse core modules --level=6 --no-progress",
+        "unclestan:7": "phpstan analyse core modules --level=7 --no-progress",
+        "unclestan:8": "phpstan analyse core modules --level=8 --no-progress",
+        "unclestan:max": "phpstan analyse core modules --level=max --no-progress",
+        "test": "vendor/bin/codecept run",
+        "test:unit": "vendor/bin/codecept run unit",
+        "test:api": "vendor/bin/codecept run api",
         "lint": "php-cs-fixer fix --dry-run --diff",
         "lint-fix": "php-cs-fixer fix",
         "post-install-cmd": [
