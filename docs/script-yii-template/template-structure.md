@@ -61,14 +61,11 @@
 │ │ ├── swagger/    # Аннотации для Swagger (info, parameters, schemas)
 │ │ └── view/       # Шаблоны представлений (например, для Swagger UI)
 │ └── security/     # Компоненты безопасности (YiiIdentity)
-├── docker-compose.yml # Конфигурация Docker (PHP 7.4 Apache)
 ├── docs/           # Проектная документация (Markdown)
 │ └── script-yii-template/ # Описание используемого шаблона фреймворка
 ├── modules/        # Модули приложения (расширения, боты, админки)
 ├── requirements.php # Проверка требований окружения
-├── Vagrantfile     # Конфигурация Vagrant (для локальной разработки)
 ├── web/            # Публичная директория (DocumentRoot)
-│ ├── .htaccess     # Правила перезаписи (URL)
 │ ├── assets/       # Публичные ассеты (CSS, JS, изображения)
 │ ├── css/          # Стили (включая кастомный swagger.css)
 │ ├── favicon.ico

@@ -10,7 +10,7 @@ on:
 
 jobs:
   linter:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout code
@@ -19,8 +19,8 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.1'
-          tools: composer
+          php-version: '8.4.23'
+          tools: composer:2.10.2
           coverage: none
 
       - name: Install dependencies
@@ -38,7 +38,7 @@ jobs:
           exit 418
 
   unclestan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout code
@@ -47,8 +47,8 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.1'
-          tools: phpstan
+          php-version: '8.4.23'
+          tools: composer:2.10.2, phpstan
           coverage: none
 
       - name: Install dependencies
@@ -93,7 +93,7 @@ jobs:
           exit 418
 
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [linter, unclestan]
     if: github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'dev')
     steps:
