@@ -69,7 +69,7 @@ IDEAKIT разработан как закрытое программное об
 
 #### Утверждённая матрица runtime
 
-Приложение сохраняет совместимость с PHP 8.1 и более новыми версиями в пределах ограничений Composer. Зафиксированные версии остальных компонентов являются основой для последующей подготовки контейнерного окружения. Существующая локальная конфигурация сохраняется до отдельной задачи по её обновлению. Текущий Compose запускает только PHP-FPM и Nginx. PostgreSQL, Redis, RabbitMQ, workers и scheduler в это окружение пока не входят.
+Приложение сохраняет совместимость с PHP 8.1 и более новыми версиями в пределах ограничений Composer. Локальный Docker Compose использует PHP-FPM 8.2.32 и запускает Nginx, PostgreSQL, Redis и RabbitMQ вместе с приложением. Миграции и прикладные таблицы, Redis-кэш, RabbitMQ topology, workers и scheduler пока не реализованы.
 
 ### Внешние сервисы и микросервисы
 
@@ -121,8 +121,19 @@ docker compose config --quiet
 docker compose build --pull
 docker compose up -d --wait
 docker compose ps
+
+# 4-B. Проверить локальные сервисы
+docker compose exec -T postgres pg_isready
+docker compose exec -T redis redis-cli ping
+docker compose exec -T rabbitmq rabbitmq-diagnostics -q check_running
+
+# 5-B. Посмотреть логи и штатно остановить стек
+docker compose logs --tail=100
+docker compose down
 ```
-Контейнерный стек пока запускает только Nginx и PHP-FPM. PostgreSQL, Redis и RabbitMQ будут добавлены отдельным этапом. До этого прикладные сценарии, зависящие от них, требуют отдельно настроенных сервисов.
+Контейнерный стек запускает Nginx, PHP-FPM, PostgreSQL, Redis и RabbitMQ. Приложение доступно по адресу `http://localhost:8080`. PostgreSQL, Redis и AMQP RabbitMQ опубликованы только на `127.0.0.1`; порты можно переопределить переменными `POSTGRES_PORT`, `REDIS_PORT` и `RABBITMQ_PORT`. Команда `docker compose down` сохраняет именованные volumes PostgreSQL и RabbitMQ. Redis намеренно работает без постоянного volume и без RDB/AOF.
+
+Compose поднимает только сами инфраструктурные сервисы. Он не создаёт прикладные таблицы, Redis-кэш, exchanges, queues, bindings или workers. RabbitMQ management UI не установлен и наружу не опубликован.
 
 ### Развёртывание на продакшн (production)
 
