@@ -1,9 +1,79 @@
-version: '2'
 services:
-  php:
-    image: yiisoftware/yii2-php:7.4-apache
+  php-fpm:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    environment:
+      APP_NAME: IDEAKIT
+      APP_ENV: dev
+      APP_DEBUG: "false"
+      DEBUG_LVL: "0"
+      APP_URL: http://localhost:8080
+      COOKIE_VALIDATION_KEY: local-development-cookie-validation-key
+      ADMIN_EMAIL: admin@example.test
+      FRONTEND_URL: http://localhost:8080
+      MAILER_DSN: null://null
+      MAILER_SCHEME: smtp
+      MAILER_HOST: localhost
+      MAILER_PORT: "1025"
+      MAILER_USERNAME: local
+      MAILER_PASSWORD: local-development-only
+      MAILER_ENCRYPTION: ""
+      SENDER_EMAIL: no-reply@example.test
+      SENDER_NAME: IDEAKIT
+      DB_DSN: pgsql:host=127.0.0.1;port=5432;dbname=ideakit
+      DB_USERNAME: ideakit
+      DB_PASSWORD: local-development-only
+    init: true
+    stop_signal: SIGQUIT
+    stop_grace_period: 10s
     volumes:
-      - ~/.composer-docker/cache:/root/.composer/cache:delegated
-      - ./:/app:delegated
+      - runtime-data:/app/runtime
+      - web-assets:/app/web/assets
+    networks:
+      - runtime
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          SCRIPT_NAME=/health/ready SCRIPT_FILENAME=/health/ready REQUEST_METHOD=GET
+          cgi-fcgi -bind -connect 127.0.0.1:9000 2>/dev/null | grep -q pong
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  nginx:
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile
+    depends_on:
+      php-fpm:
+        condition: service_healthy
+    init: true
+    stop_signal: SIGQUIT
+    stop_grace_period: 10s
     ports:
-      - '8000:80'
+      - "127.0.0.1:8080:80"
+    volumes:
+      - web-assets:/app/web/assets:ro
+    networks:
+      - runtime
+      - ingress
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget --quiet --output-document=/dev/null http://127.0.0.1/health/ready
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+networks:
+  runtime:
+    internal: true
+  ingress:
+
+volumes:
+  runtime-data:
+  web-assets:
