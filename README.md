@@ -62,14 +62,14 @@ IDEAKIT разработан как закрытое программное об
 | **PHP-FPM** | 8.1+ | Выполнение web-, console- и worker-процессов приложения |
 | **Nginx** | 1.28.3 | Входная HTTP-точка и передача PHP-запросов в PHP-FPM |
 | **Composer** | 2.10.2 | Установка зафиксированных PHP-зависимостей |
-| **Docker Compose** | Конфигурация готовится | Воспроизводимый локальный запуск сервисов |
+| **Docker Compose** | Compose Specification | Воспроизводимый локальный запуск сервисов |
 | **GitHub Actions** | — | Проверки качества и управляемое развёртывание |
-| **Debian Bookworm** | — | Базовая операционная система будущего PHP-образа |
+| **Debian Bookworm** | — | Базовая операционная система PHP-образа |
 | **UTC** | — | Единая временная зона runtime |
 
 #### Утверждённая матрица runtime
 
-Приложение сохраняет совместимость с PHP 8.1 и более новыми версиями в пределах ограничений Composer. Зафиксированные версии остальных компонентов являются основой для последующей подготовки контейнерного окружения. Существующая локальная конфигурация сохраняется до отдельной задачи по её обновлению. Полноценные Dockerfile, Nginx и Docker Compose будут добавлены следующим этапом; до этого матрица не является инструкцией запуска.
+Приложение сохраняет совместимость с PHP 8.1 и более новыми версиями в пределах ограничений Composer. Локальный Docker Compose использует PHP-FPM 8.2.32 и запускает Nginx, PostgreSQL, Redis и RabbitMQ вместе с приложением. Миграции и прикладные таблицы, Redis-кэш, RabbitMQ topology, workers и scheduler пока не реализованы.
 
 ### Внешние сервисы и микросервисы
 
@@ -108,15 +108,36 @@ cd ideakit.thescript
 # 2. Переключиться на ветку разработки
 git checkout dev
 
-# 3. Установить зависимости
+
+# Вариант A: локальные PHP и Composer
+# 3-А. Установить зависимости
 php -v
 composer --version
 composer install --no-interaction --prefer-dist
 
-# 4. Проверить зависимости и требования Yii2
+# 4-А. Проверить зависимости и требования Yii2
 composer check-platform-reqs
 php requirements.php
+
+# Вариант B: Docker Compose
+# 3-B. Проверить конфигурацию, собрать образы и запустить контейнеры:
+docker compose config --quiet
+docker compose build --pull
+docker compose up -d --wait
+docker compose ps
+
+# 4-B. Проверить локальные сервисы
+docker compose exec -T postgres pg_isready
+docker compose exec -T redis redis-cli ping
+docker compose exec -T rabbitmq rabbitmq-diagnostics -q check_running
+
+# 5-B. Посмотреть логи и штатно остановить стек
+docker compose logs --tail=100
+docker compose down
 ```
+Контейнерный стек запускает Nginx, PHP-FPM, PostgreSQL, Redis и RabbitMQ. Приложение доступно по адресу `http://localhost:8080`. PostgreSQL, Redis и AMQP RabbitMQ опубликованы только на `127.0.0.1`; порты можно переопределить переменными `POSTGRES_PORT`, `REDIS_PORT` и `RABBITMQ_PORT`. Команда `docker compose down` сохраняет именованные volumes PostgreSQL и RabbitMQ. Redis намеренно работает без постоянного volume и без RDB/AOF.
+
+Compose поднимает только сами инфраструктурные сервисы. Он не создаёт прикладные таблицы, Redis-кэш, exchanges, queues, bindings или workers. RabbitMQ management UI не установлен и наружу не опубликован.
 
 Команды запуска web-, console- и worker-процессов будут добавлены после их проверки в новом контейнерном окружении. Реальный `.env` в репозитории не хранится; локальные значения создаются разработчиком на основе `.env.example`.
 

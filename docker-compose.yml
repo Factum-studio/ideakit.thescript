@@ -1,9 +1,168 @@
-version: '2'
 services:
-  php:
-    image: yiisoftware/yii2-php:7.4-apache
+  php-fpm:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    environment:
+      APP_NAME: IDEAKIT
+      APP_ENV: dev
+      APP_DEBUG: "false"
+      DEBUG_LVL: "0"
+      APP_URL: http://localhost:8080
+      COOKIE_VALIDATION_KEY: local-development-cookie-validation-key
+      ADMIN_EMAIL: admin@example.test
+      FRONTEND_URL: http://localhost:8080
+      MAILER_DSN: null://null
+      MAILER_SCHEME: smtp
+      MAILER_HOST: localhost
+      MAILER_PORT: "1025"
+      MAILER_USERNAME: local
+      MAILER_PASSWORD: local-development-only
+      MAILER_ENCRYPTION: ""
+      SENDER_EMAIL: no-reply@example.test
+      SENDER_NAME: IDEAKIT
+      DB_DSN: pgsql:host=postgres;port=5432;dbname=${POSTGRES_DB:-ideakit}
+      DB_USERNAME: ${POSTGRES_USER:-ideakit}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-local-development-only}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    init: true
+    stop_signal: SIGQUIT
+    stop_grace_period: 10s
     volumes:
-      - ~/.composer-docker/cache:/root/.composer/cache:delegated
-      - ./:/app:delegated
+      - runtime-data:/app/runtime
+      - web-assets:/app/web/assets
+    networks:
+      - runtime
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          SCRIPT_NAME=/health/ready SCRIPT_FILENAME=/health/ready REQUEST_METHOD=GET
+          cgi-fcgi -bind -connect 127.0.0.1:9000 2>/dev/null | grep -q pong
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  postgres:
+    image: postgres:17.10-alpine3.23@sha256:8189a1f6e40904781fc9e2612687877791d21679866db58b1de996b31fc312e4
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ideakit}
+      POSTGRES_USER: ${POSTGRES_USER:-ideakit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-development-only}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    init: true
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
     ports:
-      - '8000:80'
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - runtime
+      - ingress
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready --username="$${POSTGRES_USER}" --dbname="$${POSTGRES_DB}"
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:8.2.8-alpine@sha256:a7859ed111db3c1f5404a973a4747505d559fb5ca32d37e447afc0ef845a2103
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+    init: true
+    stop_signal: SIGTERM
+    stop_grace_period: 10s
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    tmpfs:
+      - /data
+    networks:
+      - runtime
+      - ingress
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  rabbitmq:
+    image: rabbitmq:4.3.4-alpine@sha256:a762c02d0c1fa7c3de1eca5d62b4fe9812649f41a3b38d716e1afcbe7e5387ad
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-ideakit}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-local-development-only}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_VHOST:-ideakit}
+    init: true
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
+    ports:
+      - "127.0.0.1:${RABBITMQ_PORT:-5672}:5672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - runtime
+      - ingress
+    healthcheck:
+      test:
+        - CMD
+        - su-exec
+        - rabbitmq
+        - rabbitmq-diagnostics
+        - -q
+        - check_running
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  nginx:
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile
+    depends_on:
+      php-fpm:
+        condition: service_healthy
+    init: true
+    stop_signal: SIGQUIT
+    stop_grace_period: 10s
+    ports:
+      - "127.0.0.1:8080:80"
+    volumes:
+      - web-assets:/app/web/assets:ro
+    networks:
+      - runtime
+      - ingress
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget --quiet --output-document=/dev/null http://127.0.0.1/health/ready
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+networks:
+  runtime:
+    internal: true
+  ingress:
+
+volumes:
+  runtime-data:
+  web-assets:
+  postgres-data:
+  rabbitmq-data:

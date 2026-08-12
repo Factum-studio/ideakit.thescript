@@ -1,0 +1,17 @@
+.git
+.github
+.vs
+.idea
+.vscode
+.env
+.env.*
+vendor
+runtime/**
+web/assets/**
+tests/_output/**
+.php-cs-fixer.cache
+scancore_output.txt
+stats*
+docker-compose.yml
+Vagrantfile
+vagrant
