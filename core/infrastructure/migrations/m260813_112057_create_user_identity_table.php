@@ -17,12 +17,20 @@ class m260813_112057_create_user_identity_table extends Migration
     public function safeUp()
     {
         $this->createTable('{{%user_identity}}', [
-            'id'                => $this->primaryKey()->notNull(),
-            'user_id'           => $this->integer()->notNull(),
+            'id'                => $this->string(36)->notNull(),
+            'user_id'           => $this->string(36)->notNull(),
             'provider'          => $this->string(50)->notNull()->comment('telegram, internal, google, etc.'),
             'provider_client_id' => $this->string(255)->notNull(),
             'created_at'        => $this->timestamp()->notNull()->defaultExpression('CURRENT_TIMESTAMP'),
         ]);
+
+        $this->addPrimaryKey('pk-user_identity', '{{%user_identity}}', 'id');
+
+        // Меняем тип на uuid (PostgreSQL)
+        if ($this->getDb()->getDriverName() === 'pgsql') {
+            $this->execute('ALTER TABLE {{%user_identity}} ALTER COLUMN id TYPE uuid USING id::uuid');
+            $this->execute('ALTER TABLE {{%user_identity}} ALTER COLUMN user_id TYPE uuid USING user_id::uuid');
+        }
 
         // Индексы
         $this->createIndex('idx-user_identity-user_id', '{{%user_identity}}', 'user_id');

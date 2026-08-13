@@ -17,7 +17,7 @@ class m260813_110316_create_user_table extends Migration
     public function safeUp()
     {
         $this->createTable('{{%user}}', [
-            'id'            => $this->primaryKey()->notNull(),
+            'id'            => $this->string(36)->notNull(),
             'surname'       => $this->string(100)->notNull(),
             'name'          => $this->string(100)->notNull(),
             'patronymic'    => $this->string(100)->null(),
@@ -31,6 +31,13 @@ class m260813_110316_create_user_table extends Migration
             'updated_at'    => $this->timestamp()->notNull()->defaultExpression('CURRENT_TIMESTAMP'),
             'last_login_at' => $this->timestamp()->null(),
         ]);
+
+        $this->addPrimaryKey('pk-user', '{{%user}}', 'id');
+
+        // Меняем тип на uuid (PostgreSQL)
+        if ($this->getDb()->getDriverName() === 'pgsql') {
+            $this->execute('ALTER TABLE {{%user}} ALTER COLUMN id TYPE uuid USING id::uuid');
+        }
 
         // Индексы
         $this->createIndex('idx-user-email', '{{%user}}', 'email');
