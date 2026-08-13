@@ -7,5 +7,5 @@ declare(strict_types=1);
  * '<source>\module-name\infrastructure\migrations'
  */
 return [
-
+    'core\\infrastructure\\migrations'
 ];
