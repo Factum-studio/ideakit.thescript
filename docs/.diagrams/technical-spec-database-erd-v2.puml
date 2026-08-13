@@ -1,0 +1,179 @@
+@startuml
+title Физическая модель PostgreSQL — 16 таблиц MVP
+
+skinparam backgroundColor white
+skinparam shadowing false
+skinparam linetype ortho
+hide methods
+hide stereotypes
+
+entity user {
+  * id : uuid <<PK>>
+  --
+  surname : varchar(100)
+  name : varchar(100)
+  patronymic : varchar(100)
+  email : varchar(255) <<UQ>>
+  phone : varchar(20) <<UQ>>
+  role : varchar(50)
+  post : varchar(100)
+  status : smallint
+  auth_key : varchar(32)
+  created_at : timestamp
+  updated_at : timestamp
+  last_login_at : timestamp
+}
+
+entity user_identity {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK>>
+  provider : varchar(50)
+  provider_client_id : varchar(255) <<UQ>>
+  created_at : timestamp
+}
+
+entity telegram_bot_sessions {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK>>
+  flow_code : varchar
+}
+
+entity telegram_updates {
+  * id : uuid <<PK>>
+  --
+  bot_key : varchar
+  update_id : bigint
+  user_id : uuid <<FK, nullable>>
+  status : varchar
+}
+
+entity business_ideas {
+  * id : uuid <<PK>>
+  --
+  status : varchar
+}
+
+entity idea_versions {
+  * id : uuid <<PK>>
+  --
+  business_idea_id : uuid <<FK>>
+  version_no : integer
+  content_status : varchar
+  report_json : jsonb
+}
+
+entity idea_publications {
+  * id : uuid <<PK>>
+  --
+  business_idea_id : uuid <<FK>>
+  idea_version_id : uuid <<FK>>
+  sequence_no : bigint <<UQ>>
+  status : varchar
+  initiated_by_user_id : uuid <<FK, nullable>>
+}
+
+entity idea_impressions {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK>>
+  business_idea_id : uuid <<FK>>
+  idea_version_id : uuid <<FK>>
+  idea_publication_id : uuid <<FK>>
+  outbox_message_id : uuid <<FK>>
+}
+
+entity user_idea_actions {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK>>
+  idea_version_id : uuid <<FK>>
+  action_type : varchar
+}
+
+entity agency_leads {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK>>
+  idea_version_id : uuid <<FK>>
+  status : varchar
+}
+
+entity agency_lead_status_history {
+  * id : uuid <<PK>>
+  --
+  agency_lead_id : uuid <<FK>>
+  user_id : uuid <<FK, nullable>>
+  to_status : varchar
+}
+
+entity agency_lead_messages {
+  * id : uuid <<PK>>
+  --
+  agency_lead_id : uuid <<FK>>
+  user_id : uuid <<FK, nullable>>
+}
+
+entity outbox_messages {
+  * id : uuid <<PK>>
+  --
+  destination : varchar
+  message_type : varchar
+  aggregate_id : uuid
+  status : varchar
+  idempotency_key : varchar <<UQ>>
+}
+
+entity ai_jobs {
+  * id : uuid <<PK>>
+  --
+  job_type : varchar
+  subject_id : uuid <<logical>>
+  status : varchar
+  idempotency_key : varchar <<UQ>>
+}
+
+entity market_source_snapshots {
+  * id : uuid <<PK>>
+  --
+  normalized_final_url : text
+  content_hash : char(64)
+  warning_status : varchar
+}
+
+entity source_references {
+  * id : uuid <<PK>>
+  --
+  idea_version_id : uuid <<FK>>
+  claim_id : uuid
+  market_source_snapshot_id : uuid <<FK>>
+}
+
+user ||--o{ user_identity
+user ||--o{ telegram_bot_sessions
+user |o--o{ telegram_updates
+user ||--o{ idea_impressions
+user ||--o{ user_idea_actions
+user ||--o{ agency_leads
+user |o--o{ agency_lead_status_history
+user |o--o{ agency_lead_messages
+user |o..o{ idea_publications : admin action
+
+business_ideas ||--|{ idea_versions
+idea_versions ||--o| idea_publications
+
+business_ideas ||--o{ idea_impressions
+idea_versions ||--o{ idea_impressions
+idea_publications ||--o{ idea_impressions
+outbox_messages ||--o| idea_impressions
+
+idea_versions ||--o{ user_idea_actions
+telegram_updates |o--o{ user_idea_actions
+
+idea_versions ||--o{ source_references
+market_source_snapshots ||--o{ source_references
+
+telegram_updates |o..o{ outbox_messages : logical origin
+ai_jobs |o..o{ outbox_messages : logical origin
+@enduml
