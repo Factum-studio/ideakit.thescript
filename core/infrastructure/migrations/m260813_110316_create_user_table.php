@@ -21,7 +21,7 @@ class m260813_110316_create_user_table extends Migration
             'surname'       => $this->string(100)->notNull(),
             'name'          => $this->string(100)->notNull(),
             'patronymic'    => $this->string(100)->null(),
-            'email'         => $this->string(255)->notNull()->unique(),
+            'email'         => $this->string(255)->null()->unique(),
             'phone'         => $this->string(20)->null()->unique(),
             'role'          => $this->string(50)->notNull()->defaultValue('user'),
             'post'          => $this->string(100)->null(),
