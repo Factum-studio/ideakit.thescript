@@ -1,5 +1,6 @@
 parameters:
     level: 5 # базовый уровень
+    reportUnmatchedIgnoredErrors: false
     paths:
         - core
         - modules
