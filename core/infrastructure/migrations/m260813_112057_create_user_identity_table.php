@@ -30,7 +30,7 @@ class m260813_112057_create_user_identity_table extends Migration
             'idx-user_identity-provider-client',
             '{{%user_identity}}',
             ['provider', 'provider_client_id'],
-            true
+            true,
         );
 
         // Внешний ключ к таблице user
@@ -41,7 +41,7 @@ class m260813_112057_create_user_identity_table extends Migration
             '{{%user}}',
             'id',
             'CASCADE',
-            'CASCADE'
+            'CASCADE',
         );
     }
 
