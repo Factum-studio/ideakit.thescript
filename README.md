@@ -90,6 +90,7 @@ IDEAKIT разработан как закрытое программное об
 - Redis 8.2.8
 - RabbitMQ 4.3.4
 - Composer 2.10.2
+- GNU Make для использования коротких команд из `Makefile`
 - Nginx / Apache (или встроенный сервер для разработки)
 - Доступ к Telegram Bot API (токен бота)
 - часовой пояс runtime — UTC
@@ -119,6 +120,61 @@ composer install --no-interaction --prefer-dist
 composer check-platform-reqs
 php requirements.php
 
+# Вариант B: Docker Compose
+# 3-B. Проверить конфигурацию, собрать образы и запустить контейнеры:
+docker compose config --quiet
+docker compose build --pull
+docker compose up -d --wait
+docker compose ps
+
+# 4-B. Проверить локальные сервисы
+docker compose exec -T postgres pg_isready
+docker compose exec -T redis redis-cli ping
+docker compose exec -T rabbitmq rabbitmq-diagnostics -q check_running
+
+# 5-B. Посмотреть логи и штатно остановить стек
+docker compose logs --tail=100
+docker compose down
+```
+Контейнерный стек запускает Nginx, PHP-FPM, PostgreSQL, Redis и RabbitMQ. Приложение доступно по адресу `http://localhost:8080`. PostgreSQL, Redis и AMQP RabbitMQ опубликованы только на `127.0.0.1`; порты можно переопределить переменными `POSTGRES_PORT`, `REDIS_PORT` и `RABBITMQ_PORT`. Команда `docker compose down` сохраняет именованные volumes PostgreSQL и RabbitMQ. Redis намеренно работает без постоянного volume и без RDB/AOF.
+
+Compose поднимает только сами инфраструктурные сервисы. Он не создаёт прикладные таблицы, Redis-кэш, exchanges, queues, bindings или workers. RabbitMQ management UI не установлен и наружу не опубликован.
+
+Для управления Docker-окружением рекомендуется корневой `Makefile`:
+
+```bash
+make start
+make diagnose
+make stop
+```
+
+| Цель | Назначение |
+|---|---|
+| `make help` | показать список целей и параметров |
+| `make config` | проверить Compose-конфигурацию |
+| `make build` | проверить конфигурацию и собрать образы |
+| `make start` | собрать и запустить окружение с ожиданием health-checks |
+| `make stop` | остановить окружение с сохранением именованных volumes |
+| `make restart` | последовательно остановить и заново запустить окружение |
+| `make status` | показать состояние всех контейнеров |
+| `make logs` | показать последние строки логов |
+| `make logs-follow` | следить за новыми строками логов |
+| `make requirements` | проверить платформенные требования PHP и Yii |
+| `make console` | проверить запуск Yii console |
+| `make diagnose` | проверить уже запущенное окружение без автоматического запуска |
+
+Логи можно ограничить одним сервисом и изменить число строк:
+
+```bash
+make logs SERVICE=postgres
+make logs SERVICE=rabbitmq TAIL=300
+```
+
+`make stop` не удаляет именованные volumes PostgreSQL и RabbitMQ.
+
+Прямые команды Docker Compose остаются прозрачным эквивалентом и запасным способом:
+
+```bash
 # Вариант B: Docker Compose
 # 3-B. Проверить конфигурацию, собрать образы и запустить контейнеры:
 docker compose config --quiet
