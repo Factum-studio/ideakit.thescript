@@ -13,6 +13,7 @@ use core\application\handler\UpdateUserHandler;
 use core\application\port\ISecurityService;
 use core\application\port\IUserIdentityRepository;
 use core\application\port\IUserRepository;
+use core\application\useCase\AuthenticateUseCase;
 use core\infrastructure\jwt\JwtManager;
 use core\infrastructure\jwt\JwtValidator;
 use core\infrastructure\repository\DbUserIdentityRepository;
@@ -53,6 +54,18 @@ $container->setSingleton(JwtValidator::class, function () use ($container) {
 // ---------- Security ----------
 $container->setSingleton(ISecurityService::class, function () {
     return new YiiSecurityService();
+});
+
+// ---------- UseCase ----------
+$container->setSingleton(AuthenticateUseCase::class, function () use ($container) {
+    return new AuthenticateUseCase(
+        $container->get(IUserRepository::class),
+        $container->get(IUserIdentityRepository::class),
+        $container->get(JwtManager::class),
+        $container->get(CreateUserHandler::class),
+        $container->get(AddUserIdentityHandler::class),
+        $container->get(ISecurityService::class),
+    );
 });
 
 // ---------- Хендлеры (команды и запросы) ----------
