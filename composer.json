@@ -21,7 +21,9 @@
         "vlucas/phpdotenv": "^5.6",
         "zircote/swagger-php": "^5.8",
         "doctrine/annotations": "^2.0",
-        "doctordanila/script-doc": "^1.0"
+        "doctordanila/script-doc": "^1.0",
+        "firebase/php-jwt": "^7.1",
+        "ramsey/uuid": "^4.9"
     },
     "require-dev": {
         "yiisoft/yii2-debug": "~2.1.0",
