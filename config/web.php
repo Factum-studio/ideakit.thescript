@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use core\security\JwtMiddleware;
 use core\security\YiiIdentity;
 use yii\symfonymailer\Mailer;
 
@@ -40,6 +41,11 @@ $config = [
                 return;
             }
         }
+
+        $middleware = Yii::$container->get(
+            JwtMiddleware::class
+        );
+        $middleware->handle();
     },
     'modules' => $modules,
     'components' => [

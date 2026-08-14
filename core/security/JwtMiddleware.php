@@ -28,7 +28,7 @@ class JwtMiddleware extends ActionFilter
      * @throws InvalidConfigException
      * @throws UnauthorizedHttpException
      */
-    public function beforeAction($action): bool
+    public function handle(): void
     {
         $request    = Yii::$app->request;
         $token      = null;
@@ -44,23 +44,23 @@ class JwtMiddleware extends ActionFilter
             $token = $request->getCookies()->getValue('access_token');
         }
 
-        if ($token) {
-            $payload = $this->jwtManager->validate($token);
-            if (!$payload) {
-                throw new UnauthorizedHttpException('Invalid or expired token.');
-            }
-
-            /** @var IUserRepository $userRepo */
-            $userRepo = Yii::$container->get(IUserRepository::class);
-            $user = $userRepo->findById(new UserId($payload->userId));
-            if (!$user || !$user->getStatus()->isActive()) {
-                throw new UnauthorizedHttpException('Account is inactive or not found.');
-            }
-
-            $identity = new YiiIdentity($user);
-            Yii::$app->user->setIdentity($identity);
+        if (!$token) {
+            throw new UnauthorizedHttpException('Token not found.');
         }
 
-        return parent::beforeAction($action);
+        $payload = $this->jwtManager->validate($token);
+        if (!$payload) {
+            throw new UnauthorizedHttpException('Invalid or expired token.');
+        }
+
+        /** @var IUserRepository $userRepo */
+        $userRepo = Yii::$container->get(IUserRepository::class);
+        $user = $userRepo->findById(new UserId($payload->userId));
+        if (!$user || !$user->getStatus()->isActive()) {
+            throw new UnauthorizedHttpException('Account is inactive or not found.');
+        }
+
+        $identity = new YiiIdentity($user);
+        Yii::$app->user->setIdentity($identity);
     }
 }
