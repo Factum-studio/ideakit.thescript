@@ -8,6 +8,7 @@ use yii\symfonymailer\Mailer;
 $params         = require __DIR__ . '/params.php';
 $db             = require __DIR__ . '/db.php';
 $modules        = require __DIR__ . '/modules.php';
+$container      = __DIR__ . '/container.php';
 $ignoreConfig   = require __DIR__ . '/ignore_routes.php';
 
 $config = [
@@ -104,6 +105,8 @@ $config = [
     ],
     'params' => $params,
 ];
+
+require $container;
 
 if (YII_ENV_DEV) {
     $config['bootstrap'][] = 'debug';

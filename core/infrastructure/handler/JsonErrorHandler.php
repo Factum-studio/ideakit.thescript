@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace core\infrastructure\handler;
 
+use core\domain\exception\IHttpException;
+use core\domain\exception\ValidationException;
+use Throwable;
+use Yii;
 use yii\web\ErrorHandler;
 use yii\web\Response;
 use core\application\dto\ErrorDto;
@@ -13,33 +17,44 @@ class JsonErrorHandler extends ErrorHandler
 {
     protected function renderException($exception): void
     {
-        $response = \Yii::$app->response ?? new Response();
+        $response = Yii::$app->response ?? new Response();
 
         $response->format = Response::FORMAT_JSON;
 
-        $statusCode = 500;
-
         if ($exception instanceof HttpException) {
             $statusCode = $exception->statusCode;
+        } elseif ($exception instanceof IHttpException) {
+            $statusCode = $exception->getStatusCode();
+        } else {
+            $statusCode = 500;
         }
+
         $message = $exception->getMessage() ?: 'Internal Server Error';
 
-        $details = method_exists($exception, 'getDetails')
-            ? $exception->getDetails()
-            : [];
+        $details = [];
+        if ($exception instanceof ValidationException) {
+            $details['errors'] = $exception->getErrors();
+        }
+        if (method_exists($exception, 'getDetails')) {
+            $details = array_merge($details, $exception->getDetails());
+        }
 
         // @phpstan-ignore-next-line
         if (YII_DEBUG) {
-            in_array($_ENV['DEBUG_LVL'], [1, 2, 3]) ? $details['trace'] = $this->getTraceAsArray($exception) : null;
-            $_ENV['DEBUG_LVL'] == (2 | 3) ? $details['request'] = [
-                'method'    => \Yii::$app->request->method,
-                'url'       => \Yii::$app->request->url,
-                'headers'   => \Yii::$app->request->headers->toArray(),
-                'body'      => \Yii::$app->request->rawBody,
-            ] : null;
+            if (in_array($_ENV['DEBUG_LVL'] ?? 0, [1, 2, 3])) {
+                $details['trace'] = $this->getTraceAsArray($exception);
+            }
+            if (($_ENV['DEBUG_LVL'] ?? 0) == 2 || ($_ENV['DEBUG_LVL'] ?? 0) == 3) {
+                $details['request'] = [
+                    'method'  => Yii::$app->request->method,
+                    'url'     => Yii::$app->request->url,
+                    'headers' => Yii::$app->request->headers->toArray(),
+                    'body'    => Yii::$app->request->rawBody,
+                ];
+            }
         }
 
-        \Yii::error($exception, 'api');
+        Yii::error($exception, 'api');
 
         $response->statusCode = $statusCode;
         $response->data = new ErrorDto($message, $statusCode, $details);
@@ -47,7 +62,7 @@ class JsonErrorHandler extends ErrorHandler
         $response->send();
     }
 
-    private function getTraceAsArray(\Throwable $exception): array
+    private function getTraceAsArray(Throwable $exception): array
     {
         $trace = [];
 
