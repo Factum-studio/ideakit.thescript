@@ -13,6 +13,8 @@ use core\application\handler\UpdateUserHandler;
 use core\application\port\ISecurityService;
 use core\application\port\IUserIdentityRepository;
 use core\application\port\IUserRepository;
+use core\infrastructure\jwt\JwtManager;
+use core\infrastructure\jwt\JwtValidator;
 use core\infrastructure\repository\DbUserIdentityRepository;
 use core\infrastructure\repository\DbUserRepository;
 use core\infrastructure\security\YiiSecurityService;
@@ -25,6 +27,27 @@ $container->setSingleton(IUserRepository::class, function () {
 
 $container->setSingleton(IUserIdentityRepository::class, function () {
     return new DbUserIdentityRepository();
+});
+
+// ---------- JWT ----------
+$container->setSingleton(JwtManager::class, function () {
+    $secret = $_ENV['JWT_SECRET'] ?? null;
+
+    if (empty($secret) || !is_string($secret)) {
+        throw new RuntimeException('JWT_SECRET environment variable is not set or empty.');
+    }
+
+    $ttl    = (int) ($_ENV['JWT_TTL'] ?? 3600);
+    return new JwtManager($secret, $ttl);
+});
+
+// ---------- JwtValidator ----------
+$container->setSingleton(JwtValidator::class, function () use ($container) {
+    return new JwtValidator(
+        $container->get(
+            JwtManager::class
+        )
+    );
 });
 
 // ---------- Security ----------
