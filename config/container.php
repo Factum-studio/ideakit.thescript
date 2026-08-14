@@ -48,8 +48,8 @@ $container->setSingleton(JwtManager::class, function () {
 $container->setSingleton(JwtValidator::class, function () use ($container) {
     return new JwtValidator(
         $container->get(
-            JwtManager::class
-        )
+            JwtManager::class,
+        ),
     );
 });
 
@@ -129,7 +129,7 @@ $container->set(RegenerateAuthKeyHandler::class, function () use ($container) {
 $container->setSingleton(JwtMiddleware::class, function () use ($container) {
     return new JwtMiddleware(
         $container->get(
-            JwtManager::class
-        )
+            JwtManager::class,
+        ),
     );
 });

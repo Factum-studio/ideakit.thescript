@@ -66,7 +66,7 @@ class AuthenticateUseCase
         // 1. Ищем identity по провайдеру и client_id
         $identity = $this->identityRepository->findByProviderAndClientId(
             $request->provider,
-            $request->providerClientId
+            $request->providerClientId,
         );
 
         $user = null;
@@ -84,7 +84,7 @@ class AuthenticateUseCase
                 phone: $request->userData['phone'] ?? null,
                 role: $request->userData['role'] ?? 'user',
                 post: $request->userData['post'] ?? null,
-                status: (int)($request->userData['status'] ?? 1)
+                status: (int)($request->userData['status'] ?? 1),
             );
             $user = $this->createUserHandler->handle($createCommand);
         }
@@ -92,13 +92,13 @@ class AuthenticateUseCase
         // 3. Добавляем identity, если её ещё нет
         $existingIdentity = $this->identityRepository->findByProviderAndClientId(
             $request->provider,
-            $request->providerClientId
+            $request->providerClientId,
         );
         if (!$existingIdentity) {
             $addCommand = new AddUserIdentityCommand(
                 userId: $user->getId()->value(),
                 provider: $request->provider,
-                providerClientId: $request->providerClientId
+                providerClientId: $request->providerClientId,
             );
             $this->addIdentityHandler->handle($addCommand);
         }
@@ -143,7 +143,7 @@ class AuthenticateUseCase
             $authKey,
             $now,
             $now,
-            null
+            null,
         );
 
         $this->userRepository->save($user);

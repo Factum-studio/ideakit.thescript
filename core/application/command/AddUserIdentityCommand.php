@@ -9,7 +9,7 @@ class AddUserIdentityCommand
     public function __construct(
         public string $userId,
         public string $provider,
-        public string $providerClientId
+        public string $providerClientId,
     ) {
     }
 }

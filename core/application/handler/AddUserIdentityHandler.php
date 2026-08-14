@@ -21,7 +21,7 @@ class AddUserIdentityHandler
 
     public function __construct(
         IUserIdentityRepository $identityRepository,
-        IUserRepository $userRepository
+        IUserRepository $userRepository,
     ) {
         $this->identityRepository   = $identityRepository;
         $this->userRepository       = $userRepository;
@@ -42,11 +42,11 @@ class AddUserIdentityHandler
         // Проверяем, существует ли уже такая identity
         $existing = $this->identityRepository->findByProviderAndClientId(
             $command->provider,
-            $command->providerClientId
+            $command->providerClientId,
         );
         if ($existing) {
             throw new IdentityAlreadyExistsException(
-                "Identity for provider '{$command->provider}' and client ID '{$command->providerClientId}' already exists"
+                "Identity for provider '{$command->provider}' and client ID '{$command->providerClientId}' already exists",
             );
         }
 
@@ -55,7 +55,7 @@ class AddUserIdentityHandler
             $userId,
             $command->provider,
             $command->providerClientId,
-            new DateTimeImmutable()
+            new DateTimeImmutable(),
         );
 
         $this->identityRepository->save($identity);

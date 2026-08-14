@@ -9,7 +9,7 @@ class AuthRequestDto
     public function __construct(
         public string $provider,
         public string $providerClientId,
-        public array $userData = [] // surname, name, patronymic, email, phone, etc.
+        public array $userData = [], // surname, name, patronymic, email, phone, etc.
     ) {
     }
 }

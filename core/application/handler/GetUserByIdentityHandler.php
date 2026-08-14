@@ -19,7 +19,7 @@ class GetUserByIdentityHandler
 
     public function __construct(
         IUserIdentityRepository $identityRepository,
-        IUserRepository $userRepository
+        IUserRepository $userRepository,
     ) {
         $this->identityRepository   = $identityRepository;
         $this->userRepository       = $userRepository;
@@ -33,11 +33,11 @@ class GetUserByIdentityHandler
     {
         $identity = $this->identityRepository->findByProviderAndClientId(
             $query->provider,
-            $query->providerClientId
+            $query->providerClientId,
         );
         if (!$identity) {
             throw new IdentityNotFoundException(
-                "Identity not found for provider '{$query->provider}' and client ID '{$query->providerClientId}'"
+                "Identity not found for provider '{$query->provider}' and client ID '{$query->providerClientId}'",
             );
         }
 

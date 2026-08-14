@@ -15,7 +15,7 @@ class UpdateUserCommand
         public ?string $phone   = null,
         public ?string $role    = null,
         public ?string $post    = null,
-        public ?int $status     = null
+        public ?int $status     = null,
     ) {
     }
 }

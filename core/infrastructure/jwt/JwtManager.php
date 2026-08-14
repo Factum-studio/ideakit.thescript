@@ -29,7 +29,7 @@ class JwtManager
             role: $user->getRole()->value(),
             iat: $now,
             exp: $now + $this->ttl,
-            authKey: $user->getAuthKey()
+            authKey: $user->getAuthKey(),
         );
 
         return JWT::encode($payload->jsonSerialize(), $this->secret, 'HS256');
@@ -47,7 +47,7 @@ class JwtManager
                 iat: $array['iat'] ?? time(),
                 exp: $array['exp'] ?? time(),
                 authKey: $array['auth_key'] ?? null,
-                extra: array_diff_key($array, array_flip(['sub', 'role', 'iat', 'exp', 'auth_key']))
+                extra: array_diff_key($array, array_flip(['sub', 'role', 'iat', 'exp', 'auth_key'])),
             );
         } catch (Throwable $e) {
             return null;

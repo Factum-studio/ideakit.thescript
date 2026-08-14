@@ -11,7 +11,7 @@ class IdentityNotFoundException extends DomainException
     public function __construct(
         string     $message     = 'Identity not found',
         int        $code        = 0,
-        ?Throwable $previous    = null
+        ?Throwable $previous    = null,
     ) {
         parent::__construct($message, 404, $code, $previous);
     }

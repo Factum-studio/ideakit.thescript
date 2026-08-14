@@ -8,7 +8,7 @@ class GetUserByIdentityQuery
 {
     public function __construct(
         public string $provider,
-        public string $providerClientId
+        public string $providerClientId,
     ) {
     }
 }

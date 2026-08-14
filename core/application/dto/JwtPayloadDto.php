@@ -14,7 +14,7 @@ class JwtPayloadDto implements JsonSerializable
         public int $iat,
         public int $exp,
         public ?string $authKey = null,
-        public array $extra     = []
+        public array $extra     = [],
     ) {
     }
 

@@ -14,8 +14,8 @@ class ValidationException extends DomainException
         string     $message     = 'Validation failed',
         array      $errors      = [],
         int        $code        = 0,
-        ?Throwable $previous    = null)
-    {
+        ?Throwable $previous    = null,
+    ) {
         $this->errors = $errors;
         parent::__construct($message, 400, $code, $previous);
     }

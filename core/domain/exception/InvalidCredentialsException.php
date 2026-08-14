@@ -11,8 +11,8 @@ class InvalidCredentialsException extends DomainException
     public function __construct(
         string     $message     = 'Invalid credentials',
         int        $code        = 0,
-        ?Throwable $previous    = null)
-    {
+        ?Throwable $previous    = null,
+    ) {
         parent::__construct($message, 401, $code, $previous);
     }
 }

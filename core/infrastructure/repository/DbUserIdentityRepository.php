@@ -81,7 +81,7 @@ class DbUserIdentityRepository implements IUserIdentityRepository
             new UserId($ar->user_id),
             $ar->provider,
             $ar->provider_client_id,
-            new DateTimeImmutable($ar->created_at)
+            new DateTimeImmutable($ar->created_at),
         );
     }
 }

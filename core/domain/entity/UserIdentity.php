@@ -21,7 +21,7 @@ class UserIdentity
         UserId $userId,
         string $provider,
         string $providerClientId,
-        DateTimeImmutable $createdAt
+        DateTimeImmutable $createdAt,
     ) {
         $this->id               = $id;
         $this->userId           = $userId;
@@ -30,9 +30,24 @@ class UserIdentity
         $this->createdAt        = $createdAt;
     }
 
-    public function getId(): UserIdentityId { return $this->id; }
-    public function getUserId(): UserId { return $this->userId; }
-    public function getProvider(): string { return $this->provider; }
-    public function getProviderClientId(): string { return $this->providerClientId; }
-    public function getCreatedAt(): DateTimeImmutable { return $this->createdAt; }
+    public function getId(): UserIdentityId
+    {
+        return $this->id;
+    }
+    public function getUserId(): UserId
+    {
+        return $this->userId;
+    }
+    public function getProvider(): string
+    {
+        return $this->provider;
+    }
+    public function getProviderClientId(): string
+    {
+        return $this->providerClientId;
+    }
+    public function getCreatedAt(): DateTimeImmutable
+    {
+        return $this->createdAt;
+    }
 }

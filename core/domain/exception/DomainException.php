@@ -15,8 +15,8 @@ abstract class DomainException extends Exception implements IHttpException
         string     $message     = '',
         int        $statusCode  = 500,
         int        $code        = 0,
-        ?Throwable $previous    = null)
-    {
+        ?Throwable $previous    = null,
+    ) {
         $this->statusCode = $statusCode;
         parent::__construct($message, $code, $previous);
     }

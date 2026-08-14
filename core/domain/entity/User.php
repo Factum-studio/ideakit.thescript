@@ -45,7 +45,7 @@ class User
         string $authKey,
         DateTimeImmutable $createdAt,
         DateTimeImmutable $updatedAt,
-        ?DateTimeImmutable $lastLoginAt = null
+        ?DateTimeImmutable $lastLoginAt = null,
     ) {
         $this->id           = $id;
         $this->surname      = $surname;
@@ -63,24 +63,66 @@ class User
     }
 
     // Геттеры
-    public function getId(): UserId { return $this->id; }
-    public function getSurname(): string { return $this->surname; }
-    public function getName(): string { return $this->name; }
-    public function getPatronymic(): ?string { return $this->patronymic; }
-    public function getEmail(): ?Email { return $this->email; }
-    public function getPhone(): ?Phone { return $this->phone; }
-    public function getRole(): Role { return $this->role; }
-    public function getPost(): ?string { return $this->post; }
-    public function getStatus(): UserStatus { return $this->status; }
-    public function getAuthKey(): string { return $this->authKey; }
-    public function getCreatedAt(): DateTimeImmutable { return $this->createdAt; }
-    public function getUpdatedAt(): DateTimeImmutable { return $this->updatedAt; }
-    public function getLastLoginAt(): ?DateTimeImmutable { return $this->lastLoginAt; }
+    public function getId(): UserId
+    {
+        return $this->id;
+    }
+    public function getSurname(): string
+    {
+        return $this->surname;
+    }
+    public function getName(): string
+    {
+        return $this->name;
+    }
+    public function getPatronymic(): ?string
+    {
+        return $this->patronymic;
+    }
+    public function getEmail(): ?Email
+    {
+        return $this->email;
+    }
+    public function getPhone(): ?Phone
+    {
+        return $this->phone;
+    }
+    public function getRole(): Role
+    {
+        return $this->role;
+    }
+    public function getPost(): ?string
+    {
+        return $this->post;
+    }
+    public function getStatus(): UserStatus
+    {
+        return $this->status;
+    }
+    public function getAuthKey(): string
+    {
+        return $this->authKey;
+    }
+    public function getCreatedAt(): DateTimeImmutable
+    {
+        return $this->createdAt;
+    }
+    public function getUpdatedAt(): DateTimeImmutable
+    {
+        return $this->updatedAt;
+    }
+    public function getLastLoginAt(): ?DateTimeImmutable
+    {
+        return $this->lastLoginAt;
+    }
 
     /**
      * @return UserIdentity[]
      */
-    public function getIdentities(): array { return $this->identities; }
+    public function getIdentities(): array
+    {
+        return $this->identities;
+    }
 
     // Сеттеры
     public function updateProfile(string $surname, string $name, ?string $patronymic, ?Email $email, ?Phone $phone, ?string $post): void

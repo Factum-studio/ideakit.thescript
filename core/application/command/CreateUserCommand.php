@@ -14,7 +14,7 @@ class CreateUserCommand
         public ?string $phone,
         public string $role = 'user',
         public ?string $post = null,
-        public int $status  = 1
+        public int $status  = 1,
     ) {
     }
 }

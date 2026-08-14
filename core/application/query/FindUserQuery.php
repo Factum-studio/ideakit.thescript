@@ -20,7 +20,7 @@ class FindUserQuery
         public ?string $lastLoginTo = null,
         public int $limit           = 20,
         public int $page            = 1,
-        public ?array $orderBy      = null
+        public ?array $orderBy      = null,
     ) {
     }
 }

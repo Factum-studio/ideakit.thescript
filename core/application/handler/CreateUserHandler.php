@@ -69,7 +69,7 @@ class CreateUserHandler
             $authKey,
             $now,
             $now,
-            null
+            null,
         );
 
         $this->userRepository->save($user);

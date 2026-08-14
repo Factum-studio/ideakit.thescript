@@ -8,7 +8,7 @@ class GetUserQuery
 {
     public function __construct(
         public string $userId,
-        public array $expand = [] // например, ['identities']
+        public array $expand = [], // например, ['identities']
     ) {
     }
 }

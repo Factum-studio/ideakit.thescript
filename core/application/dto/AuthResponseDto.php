@@ -10,7 +10,7 @@ class AuthResponseDto implements JsonSerializable
 {
     public function __construct(
         public string $accessToken,
-        public array $user
+        public array $user,
     ) {
     }
 

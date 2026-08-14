@@ -188,7 +188,7 @@ class DbUserRepository implements IUserRepository
             $ar->auth_key,
             new DateTimeImmutable($ar->created_at),
             new DateTimeImmutable($ar->updated_at),
-            $ar->last_login_at ? new DateTimeImmutable($ar->last_login_at) : null
+            $ar->last_login_at ? new DateTimeImmutable($ar->last_login_at) : null,
         );
     }
 
@@ -210,7 +210,7 @@ class DbUserRepository implements IUserRepository
             $row['auth_key'],
             new DateTimeImmutable($row['created_at']),
             new DateTimeImmutable($row['updated_at']),
-            $row['last_login_at'] ? new DateTimeImmutable($row['last_login_at']) : null
+            $row['last_login_at'] ? new DateTimeImmutable($row['last_login_at']) : null,
         );
     }
 }
