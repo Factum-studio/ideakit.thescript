@@ -19,6 +19,8 @@ use core\infrastructure\jwt\JwtValidator;
 use core\infrastructure\repository\DbUserIdentityRepository;
 use core\infrastructure\repository\DbUserRepository;
 use core\infrastructure\security\YiiSecurityService;
+use core\security\JwtMiddleware;
+
 $container = Yii::$container;
 
 // ---------- Репозитории ----------
@@ -123,3 +125,11 @@ $container->set(RegenerateAuthKeyHandler::class, function () use ($container) {
     );
 });
 
+// ---------- Middleware ----------
+$container->setSingleton(JwtMiddleware::class, function () use ($container) {
+    return new JwtMiddleware(
+        $container->get(
+            JwtManager::class
+        )
+    );
+});
