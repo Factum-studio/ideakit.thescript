@@ -43,7 +43,7 @@ $config = [
         }
 
         $middleware = Yii::$container->get(
-            JwtMiddleware::class
+            JwtMiddleware::class,
         );
         $middleware->handle();
     },
