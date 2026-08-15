@@ -17,7 +17,7 @@ use Firebase\JWT\SignatureInvalidException;
 
 class JwtManagerTest extends Unit
 {
-    private const SECRET = 'test-secret-1234567890';
+    private const SECRET = '01234567890123456789012345678901';
     private const TTL = 3600;
 
     private JwtManager $jwtManager;

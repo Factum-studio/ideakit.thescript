@@ -16,8 +16,10 @@ use core\infrastructure\jwt\JwtManager;
 use core\domain\entity\User;
 use core\domain\entity\UserIdentity;
 use core\domain\exception\UserAlreadyExistsException;
-use core\domain\valueObject\UserId;
 use PHPUnit\Framework\MockObject\Exception;
+
+use core\domain\valueObject\{UserId, Email, Phone, Role, UserStatus};
+use DateTimeImmutable;
 
 class AuthenticateUseCaseTest extends Unit
 {
@@ -36,11 +38,23 @@ class AuthenticateUseCaseTest extends Unit
         $addHandler = $this->createMock(AddUserIdentityHandler::class);
         $security = $this->createMock(ISecurityService::class);
 
+        // Создаём реального пользователя вместо мока
         $userId = UserId::generate();
-        $user = $this->createMock(User::class);
-        $user->method('getId')->willReturn($userId);
-        $user->method('getRole')->willReturn(new \core\domain\valueObject\Role('user'));
-        $user->method('getAuthKey')->willReturn('authKey');
+        $user = new User(
+            $userId,
+            'Doe',
+            'John',
+            null,
+            new Email('john@example.com'),
+            new Phone('+1234567890'),
+            new Role('user'),
+            null,
+            new UserStatus(1),
+            'authKey123',
+            new DateTimeImmutable(),
+            new DateTimeImmutable(),
+            null
+        );
 
         $identity = $this->createMock(UserIdentity::class);
         $identity->method('getUserId')->willReturn($userId);
@@ -91,10 +105,21 @@ class AuthenticateUseCaseTest extends Unit
         $security = $this->createMock(ISecurityService::class);
 
         $userId = UserId::generate();
-        $user = $this->createMock(User::class);
-        $user->method('getId')->willReturn($userId);
-        $user->method('getRole')->willReturn(new \core\domain\valueObject\Role('user'));
-        $user->method('getAuthKey')->willReturn('authKey');
+        $user = new User(
+            $userId,
+            'Doe',
+            'John',
+            null,
+            new Email('john@example.com'),
+            new Phone('+1234567890'),
+            new Role('user'),
+            null,
+            new UserStatus(1),
+            'authKey123',
+            new DateTimeImmutable(),
+            new DateTimeImmutable(),
+            null
+        );
 
         $identityRepo->expects($this->exactly(2))
             ->method('findByProviderAndClientId')
@@ -113,6 +138,7 @@ class AuthenticateUseCaseTest extends Unit
 
         $jwtManager->expects($this->once())
             ->method('generate')
+            ->with($user)
             ->willReturn('jwt.token');
 
         $useCase = new AuthenticateUseCase(
@@ -124,5 +150,6 @@ class AuthenticateUseCaseTest extends Unit
         $response = $useCase->execute($request);
 
         $this->assertEquals('jwt.token', $response->accessToken);
+        $this->assertIsArray($response->user);
     }
 }

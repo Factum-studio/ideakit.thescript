@@ -1,28 +1,42 @@
 #!/usr/bin/env php
 <?php
 /**
- * Yii console bootstrap file.
- *
- * @link https://www.yiiframework.com/
- * @copyright Copyright (c) 2008 Yii Software LLC
- * @license https://www.yiiframework.com/license/
+ * Yii console bootstrap file for tests.
  */
 
-defined('YII_DEBUG') or define('YII_DEBUG', true);
-defined('YII_ENV') or define('YII_ENV', 'test');
-
 require __DIR__ . '/../../vendor/autoload.php';
+
+// Загружаем .env из корня проекта
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/../..');
+$dotenv->safeLoad();
+
+// Определяем режим
+$appEnv = $_ENV['APP_ENV'] ?? getenv('APP_ENV');
+if (!is_string($appEnv) || $appEnv === '') {
+    $appEnv = 'dev';
+}
+
+$appDebugValue = $_ENV['APP_DEBUG'] ?? getenv('APP_DEBUG');
+if ($appDebugValue === false || $appDebugValue === null || $appDebugValue === '') {
+    $appDebugValue = 'false';
+}
+if (!is_string($appDebugValue)) {
+    throw new RuntimeException('APP_DEBUG must be either "true" or "false".');
+}
+
+$appDebug = filter_var($appDebugValue, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+if ($appDebug === null) {
+    throw new RuntimeException('APP_DEBUG must be either "true" or "false".');
+}
+
+defined('YII_DEBUG') or define('YII_DEBUG', $appDebug);
+defined('YII_ENV') or define('YII_ENV', $appEnv);
+
+// Подключаем Yii
 require __DIR__ . '/../../vendor/yiisoft/yii2/Yii.php';
 
-$config = yii\helpers\ArrayHelper::merge(
-    require __DIR__ . '/../../config/console.php',
-    [
-        'components' => [
-            'db' => require __DIR__ . '/../../config/test_db.php'
-        ]
-    ]
-);
-
+// Загружаем конфиг консоли
+$config = require __DIR__ . '/../../config/console.php';
 
 $application = new yii\console\Application($config);
 $exitCode = $application->run();

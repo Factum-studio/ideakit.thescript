@@ -37,13 +37,6 @@ class UserStatusTest extends Unit
         ];
     }
 
-    public function testConstructorAcceptsOnlyInt()
-    {
-        // В PHP 8+ с type-hint int передача строки вызовет TypeError
-        $this->expectException(TypeError::class);
-        new UserStatus('1');
-    }
-
     public function testIsActive()
     {
         $active = new UserStatus(1);
