@@ -9,8 +9,8 @@ declare(strict_types=1);
  */
 
 /**
- * @method static void error($message, $category = 'application')  // для JsonErrorHandler
- * @method static string getAlias($alias)                          // для DocsController, SwaggerController
+ * @method static void error($message, $category = 'application') // для JsonErrorHandler
+ * @method static string getAlias($alias) // для DocsController, SwaggerController
  *
  * @property static \yii\di\Container $container                   // для доступа к контейнеру
  * @property static \yii\web\Application|\yii\console\Application|__Application $app
