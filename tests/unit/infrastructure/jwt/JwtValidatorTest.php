@@ -17,7 +17,7 @@ use PHPUnit\Framework\MockObject\Exception;
 
 class JwtValidatorTest extends Unit
 {
-    private const SECRET = 'test-secret';
+    private const SECRET = 'test-secret-1234567890';
     private const TTL = 3600;
 
     private JwtManager $jwtManager;
