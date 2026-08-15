@@ -19,6 +19,9 @@ RUN set -eux; \
     apt-get purge --auto-remove --yes libpq-dev; \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
+# Установка pcov для сбора покрытия
+RUN pecl install pcov && docker-php-ext-enable pcov
+
 COPY docker/php/conf.d/app.ini /usr/local/etc/php/conf.d/zz-app.ini
 COPY docker/php/php-fpm.d/app.conf /usr/local/etc/php-fpm.d/zz-app.conf
 
@@ -59,6 +62,7 @@ RUN set -eux; \
     ln -s /app/runtime/test-output /app/tests/_output; \
     chown -R www-data:www-data /app/runtime /app/web/assets; \
     chmod 0755 /app/runtime /app/web/assets
+
 
 USER www-data
 

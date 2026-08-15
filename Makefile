@@ -4,7 +4,7 @@ COMPOSE ?= docker compose
 SERVICE ?=
 TAIL ?= 100
 
-.PHONY: help config build start stop restart status logs logs-follow requirements console diagnose test-migrate test-db-create test-db-refresh
+.PHONY: help config build start stop restart status logs logs-follow requirements console diagnose test-migrate test-db-create test-db-refresh coverage-generate coverage-download-report
 
 help:
 	@echo "Available targets:"
@@ -23,6 +23,8 @@ help:
 	@echo "  test-migrate  Test migrate"
 	@echo "  test-db-create  Test db create"
 	@echo "  test-db-refresh  Test db refresh"
+	@echo "  coverage-generate  coverage-generate"
+	@echo "  coverage-download-report  coverage-download-report"
 	@echo ""
 	@echo "Parameters:"
 	@echo "  SERVICE=<name>  Limit logs to a Compose service"
@@ -85,3 +87,9 @@ test-db-create:
 # Пересоздать тестовую БД (удалить + создать)
 test-db-refresh:
 	php tests/bin/yii migrate/fresh --interactive=0
+
+coverage-generate:
+	$(COMPOSE) exec php-fpm vendor/bin/codecept run unit --coverage-html
+
+coverage-download-report:
+	$(COMPOSE) cp php-fpm:/app/tests/_output/coverage ./docs/coverage_report
