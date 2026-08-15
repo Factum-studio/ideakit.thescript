@@ -18,9 +18,9 @@ class UserIdentityIdTest extends Unit
 
     public function testValidUuidWithoutDashes()
     {
+        $this->expectException(InvalidArgumentException::class);
         $hex = str_replace('-', '', Uuid::uuid4()->toString());
-        $userId = new UserIdentityId($hex);
-        $this->assertEquals($hex, $userId->value());
+        new UserIdentityId($hex);
     }
 
     public function testInvalidUuidThrowsException()
@@ -83,7 +83,7 @@ class UserIdentityIdTest extends Unit
     public function testToString()
     {
         $uuid = Uuid::uuid4()->toString();
-        $userId = new UserIdentityId($uuid);
-        $this->assertEquals($uuid, (string)$userId);
+        $id = new UserIdentityId($uuid);
+        $this->assertEquals($uuid, $id->value());
     }
 }

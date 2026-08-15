@@ -19,6 +19,7 @@ use core\domain\valueObject\UserIdentityId;
 use core\application\dto\UserDto;
 use DateTimeImmutable;
 use PHPUnit\Framework\MockObject\Exception;
+use Ramsey\Uuid\Uuid;
 
 class GetUserHandlerTest extends Unit
 {
@@ -171,15 +172,18 @@ class GetUserHandlerTest extends Unit
         $userRepo = $this->createMock(IUserRepository::class);
         $identityRepo = $this->createMock(IUserIdentityRepository::class);
 
+        $nonExistingId = Uuid::uuid4()->toString();
+
         $userRepo->expects($this->once())
             ->method('findById')
+            ->with($this->callback(fn($id) => $id->value() === $nonExistingId))
             ->willReturn(null);
 
         $this->expectException(UserNotFoundException::class);
-        $this->expectExceptionMessage('User with ID non-existing-id not found');
+        $this->expectExceptionMessage("User with ID {$nonExistingId} not found");
 
         $handler = new GetUserHandler($userRepo, $identityRepo);
-        $query = new GetUserQuery('non-existing-id');
+        $query = new GetUserQuery($nonExistingId);
         $handler->handle($query);
     }
 }

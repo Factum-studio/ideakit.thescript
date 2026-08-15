@@ -15,6 +15,7 @@ use core\domain\valueObject\Role;
 use core\domain\valueObject\UserStatus;
 use DateTimeImmutable;
 use PHPUnit\Framework\MockObject\Exception;
+use Ramsey\Uuid\Uuid;
 use RuntimeException;
 
 class RegenerateAuthKeyHandlerTest extends Unit
@@ -81,15 +82,18 @@ class RegenerateAuthKeyHandlerTest extends Unit
         $userRepo = $this->createMock(IUserRepository::class);
         $security = $this->createMock(ISecurityService::class);
 
+        $nonExistingId = Uuid::uuid4()->toString();
+
         $userRepo->expects($this->once())
             ->method('findById')
+            ->with($this->callback(fn($id) => $id->value() === $nonExistingId))
             ->willReturn(null);
 
         $this->expectException(RuntimeException::class);
         $this->expectExceptionMessage('User not found');
 
         $handler = new RegenerateAuthKeyHandler($userRepo, $security);
-        $command = new RegenerateAuthKeyCommand('non-existing-id');
+        $command = new RegenerateAuthKeyCommand($nonExistingId);
         $handler->handle($command);
     }
 }

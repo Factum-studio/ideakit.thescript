@@ -20,10 +20,11 @@ use PHPUnit\Framework\MockObject\Exception;
 
 class FindUserHandlerTest extends Unit
 {
-    private function createUser(string $id, string $email = 'john@example.com'): User
+    private function createUser(?string $id = null, string $email = 'john@example.com'): User
     {
+        $userId = $id ? new UserId($id) : UserId::generate();
         return new User(
-            new UserId($id),
+            $userId,
             'Doe',
             'John',
             null,
@@ -45,7 +46,7 @@ class FindUserHandlerTest extends Unit
     public function testHandleWithFiltersAndDefaultPagination(): void
     {
         $userRepo = $this->createMock(IUserRepository::class);
-        $user = $this->createUser('some-id', 'john@example.com');
+        $user = $this->createUser(null, 'john@example.com'); // ID генерируется автоматически
 
         $userRepo->expects($this->once())
             ->method('findWithFilters')
@@ -85,8 +86,8 @@ class FindUserHandlerTest extends Unit
     public function testHandleWithMultipleFiltersAndCustomPagination(): void
     {
         $userRepo = $this->createMock(IUserRepository::class);
-        $user1 = $this->createUser('id1', 'user1@example.com');
-        $user2 = $this->createUser('id2', 'user2@example.com');
+        $user1 = $this->createUser(null, 'user1@example.com');
+        $user2 = $this->createUser(null, 'user2@example.com');
 
         $userRepo->expects($this->once())
             ->method('findWithFilters')

@@ -15,6 +15,7 @@ use core\domain\valueObject\Role;
 use core\domain\valueObject\UserStatus;
 use DateTimeImmutable;
 use PHPUnit\Framework\MockObject\Exception;
+use Ramsey\Uuid\Uuid;
 
 class UpdateUserHandlerTest extends Unit
 {
@@ -88,14 +89,18 @@ class UpdateUserHandlerTest extends Unit
     public function testHandleUserNotFoundThrowsException(): void
     {
         $userRepo = $this->createMock(IUserRepository::class);
+
+        $nonExistingId = Uuid::uuid4()->toString();
+
         $userRepo->expects($this->once())
             ->method('findById')
+            ->with($this->callback(fn($id) => $id->value() === $nonExistingId))
             ->willReturn(null);
 
         $this->expectException(UserNotFoundException::class);
 
         $handler = new UpdateUserHandler($userRepo);
-        $command = new UpdateUserCommand('non-existing-id');
+        $command = new UpdateUserCommand($nonExistingId);
         $handler->handle($command);
     }
 

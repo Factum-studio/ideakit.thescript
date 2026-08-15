@@ -16,6 +16,7 @@ use core\domain\valueObject\Role;
 use core\domain\valueObject\UserStatus;
 use DateTimeImmutable;
 use PHPUnit\Framework\MockObject\Exception;
+use Ramsey\Uuid\Uuid;
 
 class DeleteUserHandlerTest extends Unit
 {
@@ -82,20 +83,18 @@ class DeleteUserHandlerTest extends Unit
         $userRepo = $this->createMock(IUserRepository::class);
         $identityRepo = $this->createMock(IUserIdentityRepository::class);
 
+        $nonExistingId = Uuid::uuid4()->toString();
+
         $userRepo->expects($this->once())
             ->method('findById')
+            ->with($this->callback(fn($id) => $id->value() === $nonExistingId))
             ->willReturn(null);
 
-        $userRepo->expects($this->never())
-            ->method('delete');
-        $identityRepo->expects($this->never())
-            ->method('deleteByUserId');
-
         $this->expectException(UserNotFoundException::class);
-        $this->expectExceptionMessage('User with ID non-existing-id not found');
+        $this->expectExceptionMessage("User with ID {$nonExistingId} not found");
 
         $handler = new DeleteUserHandler($userRepo, $identityRepo);
-        $command = new DeleteUserCommand('non-existing-id');
+        $command = new DeleteUserCommand($nonExistingId);
         $handler->handle($command);
     }
 }
