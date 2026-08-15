@@ -1,0 +1,84 @@
+@startuml
+!theme toy
+hide stereotype
+skinparam componentStyle rectangle
+
+package "Presentation" {
+  [BaseController] as Controller
+  [SwaggerController] as Swagger
+  [DocsController] as Docs
+}
+
+package "Security" {
+  [JwtMiddleware] as Middleware
+  [YiiIdentity] as YiiIdentity
+}
+
+package "Application" {
+  [AuthenticateUseCase] as AuthUC
+  [User Handlers] as Handlers
+  interface IUserRepository
+  interface IUserIdentityRepository
+  interface ISecurityService
+  interface ITransactionManager
+}
+
+package "Domain" {
+  [User] as User
+  [UserIdentity] as Identity
+  [Value Objects] as VO
+}
+
+package "Infrastructure" {
+  [DbUserRepository] as UserRepo
+  [DbUserIdentityRepository] as IdentityRepo
+  [JwtManager] as Jwt
+  [YiiSecurityService] as InfrastructureSecurity
+  [DbTransactionManager] as DbTxManager
+  [JsonErrorHandler] as ErrorHandler
+  [UserAR] as UserAR
+  [UserIdentityAR] as IdentityAR
+  database PostgreSQL as DB
+}
+
+Controller --> Handlers
+AuthUC --> IUserRepository
+AuthUC --> IUserIdentityRepository
+AuthUC --> ISecurityService
+AuthUC --> Handlers : uses CreateUserHandler\nand AddUserIdentityHandler
+Handlers --> IUserRepository
+Handlers --> IUserIdentityRepository
+IUserRepository <|.. UserRepo
+IUserIdentityRepository <|.. IdentityRepo
+ISecurityService <|.. InfrastructureSecurity
+ITransactionManager <|.. DbTxManager
+UserRepo --> UserAR
+IdentityRepo --> IdentityAR
+UserAR --> DB
+IdentityAR --> DB
+AuthUC --> Jwt
+Jwt --> User
+Middleware --> Jwt
+Middleware --> IUserRepository
+Middleware --> YiiIdentity
+YiiIdentity --> User
+User --> VO
+User --> Identity
+ErrorHandler --> Controller : used by Yii::$app->errorHandler
+
+note right of Middleware
+  ActionFilter, called from config/web.php
+  on beforeRequest. Docs routes are ignored.
+end note
+
+note right of Jwt
+  HS256
+  claims: sub, role,
+  iat, exp, auth_key
+end note
+
+note bottom of ErrorHandler
+  Renders all exceptions as JSON.
+  Adds trace and request details in debug mode.
+end note
+@enduml
