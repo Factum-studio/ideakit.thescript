@@ -39,13 +39,16 @@ class JwtManager
     {
         try {
             $decoded = JWT::decode($token, new Key($this->secret, 'HS256'));
-            // Приводим к массиву
             $array = (array)$decoded;
+            // Проверяем наличие обязательных полей
+            if (!isset($array['sub']) || !isset($array['role']) || !isset($array['iat']) || !isset($array['exp'])) {
+                return null;
+            }
             return new JwtPayloadDto(
-                userId: $array['sub'] ?? '',
-                role: $array['role'] ?? 'user',
-                iat: $array['iat'] ?? time(),
-                exp: $array['exp'] ?? time(),
+                userId: $array['sub'],
+                role: $array['role'],
+                iat: (int)$array['iat'],
+                exp: (int)$array['exp'],
                 authKey: $array['auth_key'] ?? null,
                 extra: array_diff_key($array, array_flip(['sub', 'role', 'iat', 'exp', 'auth_key'])),
             );
