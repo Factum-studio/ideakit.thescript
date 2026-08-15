@@ -101,7 +101,6 @@ class IdRangeTest extends Unit
 
     public function testInvalidFormatThrowsException()
     {
-        $this->markTestSkipped('It is necessary to change the parsing logic.');
         $this->expectException(InvalidArgumentException::class);
         new IdRange('1:2:3');
     }

@@ -46,14 +46,33 @@ final class IdRange
             return [];
         }
 
+        // Разрешены только цифры, запятая и двоеточие
+        if (!preg_match('/^[\d,: ]+$/', $input)) {
+            throw new \InvalidArgumentException("Invalid characters in id range: $input");
+        }
+
         $result = [];
         $parts = explode(',', $input);
 
         foreach ($parts as $part) {
             $part = trim($part);
 
+            if ($part === '') {
+                throw new \InvalidArgumentException("Empty part in id range");
+            }
+
+            // Проверка, что в части не более одного двоеточия
+            if (substr_count($part, ':') > 1) {
+                throw new \InvalidArgumentException("Invalid range format: $part (multiple colons)");
+            }
+
             if (str_contains($part, ':')) {
                 [$start, $end] = explode(':', $part);
+
+                // Убедимся, что оба конца не пустые
+                if ($start === '' || $end === '') {
+                    throw new \InvalidArgumentException("Invalid range format: $part");
+                }
 
                 $start = (int)$start;
                 $end = (int)$end;
@@ -68,6 +87,10 @@ final class IdRange
 
                 $result = array_merge($result, range($start, $end));
             } else {
+                // Для одиночных id проверяем, что это только цифры
+                if (!ctype_digit($part)) {
+                    throw new \InvalidArgumentException("Invalid id {$part}");
+                }
                 $value = (int)$part;
 
                 if ($value <= 0) {
