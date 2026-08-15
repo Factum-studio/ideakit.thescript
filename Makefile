@@ -4,7 +4,7 @@ COMPOSE ?= docker compose
 SERVICE ?=
 TAIL ?= 100
 
-.PHONY: help config build start stop restart status logs logs-follow requirements console diagnose
+.PHONY: help config build start stop restart status logs logs-follow requirements console diagnose test-migrate test-db-create test-db-refresh
 
 help:
 	@echo "Available targets:"
@@ -20,6 +20,9 @@ help:
 	@echo "  requirements  Check PHP platform and Yii requirements"
 	@echo "  console       Check the Yii console"
 	@echo "  diagnose      Diagnose an already running environment"
+	@echo "  test-migrate  Test migrate"
+	@echo "  test-db-create  Test db create"
+	@echo "  test-db-refresh  Test db refresh"
 	@echo ""
 	@echo "Parameters:"
 	@echo "  SERVICE=<name>  Limit logs to a Compose service"
@@ -72,3 +75,13 @@ diagnose:
 	$(COMPOSE) exec -T php-fpm php yii help
 	$(COMPOSE) exec -T nginx wget --quiet --spider http://127.0.0.1/health/live
 	$(COMPOSE) exec -T nginx wget --quiet --spider http://127.0.0.1/health/ready
+
+test-migrate:
+	php tests/bin/yii migrate/up --interactive=0
+
+test-db-create:
+	$(COMPOSE) exec postgres createdb -U ideakit ideakit_test
+
+# Пересоздать тестовую БД (удалить + создать)
+test-db-refresh:
+	php tests/bin/yii migrate/fresh --interactive=0
