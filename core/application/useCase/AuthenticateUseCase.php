@@ -38,7 +38,6 @@ class AuthenticateUseCase
     private JwtManager $jwtManager;
     private CreateUserHandler $createUserHandler;
     private AddUserIdentityHandler $addIdentityHandler;
-    private ISecurityService $securityService;
 
     public function __construct(
         IUserRepository $userRepository,
@@ -46,14 +45,12 @@ class AuthenticateUseCase
         JwtManager $jwtManager,
         CreateUserHandler $createUserHandler,
         AddUserIdentityHandler $addIdentityHandler,
-        ISecurityService $securityService,
     ) {
         $this->userRepository       = $userRepository;
         $this->identityRepository   = $identityRepository;
         $this->jwtManager           = $jwtManager;
         $this->createUserHandler    = $createUserHandler;
         $this->addIdentityHandler   = $addIdentityHandler;
-        $this->securityService      = $securityService;
     }
 
     /**
@@ -113,40 +110,5 @@ class AuthenticateUseCase
         // 6. Формируем ответ
         $userDto = new UserDto($user);
         return new AuthResponseDto($token, $userDto->jsonSerialize());
-    }
-
-    private function createUserFromProviderData(array $data): User
-    {
-        $id     = UserId::generate();
-        $authKey = $this->securityService->generateRandomString(32);
-        $now    = new DateTimeImmutable();
-
-        $surname    = $data['surname'] ?? 'Unknown';
-        $name       = $data['name'] ?? 'User';
-        $patronymic = $data['patronymic'] ?? null;
-        $email      = isset($data['email']) ? new Email($data['email']) : null;
-        $phone      = isset($data['phone']) ? new Phone($data['phone']) : null;
-        $role       = isset($data['role']) ? new Role($data['role']) : new Role('user');
-        $post       = $data['post'] ?? null;
-        $status     = isset($data['status']) ? new UserStatus((int)$data['status']) : new UserStatus(1);
-
-        $user = new User(
-            $id,
-            $surname,
-            $name,
-            $patronymic,
-            $email,
-            $phone,
-            $role,
-            $post,
-            $status,
-            $authKey,
-            $now,
-            $now,
-            null,
-        );
-
-        $this->userRepository->save($user);
-        return $user;
     }
 }

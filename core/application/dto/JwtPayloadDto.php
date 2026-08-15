@@ -8,6 +8,9 @@ use JsonSerializable;
 
 class JwtPayloadDto implements JsonSerializable
 {
+    /**
+     * @param array<string, mixed> $extra
+     */
     public function __construct(
         public string $userId,
         public string $role,

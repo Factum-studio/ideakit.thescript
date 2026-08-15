@@ -8,6 +8,9 @@ use JsonSerializable;
 
 class AuthResponseDto implements JsonSerializable
 {
+    /**
+     * @param array<string, mixed> $user
+     */
     public function __construct(
         public string $accessToken,
         public array $user,

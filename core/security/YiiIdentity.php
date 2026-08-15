@@ -27,7 +27,7 @@ final class YiiIdentity implements IdentityInterface
         return $this->user->getId()->value();
     }
 
-    public function getAuthKey(): ?string
+    public function getAuthKey(): string
     {
         return $this->user->getAuthKey();
     }

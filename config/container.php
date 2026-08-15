@@ -66,7 +66,6 @@ $container->setSingleton(AuthenticateUseCase::class, function () use ($container
         $container->get(JwtManager::class),
         $container->get(CreateUserHandler::class),
         $container->get(AddUserIdentityHandler::class),
-        $container->get(ISecurityService::class),
     );
 });
 

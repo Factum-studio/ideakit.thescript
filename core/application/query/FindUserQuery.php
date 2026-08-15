@@ -6,6 +6,7 @@ namespace core\application\query;
 
 class FindUserQuery
 {
+    // @phpstan-ignore-next-line
     public function __construct(
         public ?string $email       = null,
         public ?string $phone       = null,

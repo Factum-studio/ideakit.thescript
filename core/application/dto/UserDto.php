@@ -17,6 +17,9 @@ class UserDto implements JsonSerializable
      */
     private array $identities = [];
 
+    /**
+     * @param UserIdentity[] $identities
+     */
     public function __construct(User $user, array $identities = [])
     {
         $this->user         = $user;

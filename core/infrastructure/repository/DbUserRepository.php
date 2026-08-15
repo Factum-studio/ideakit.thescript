@@ -48,7 +48,11 @@ class DbUserRepository implements IUserRepository
         $ar->last_login_at  = $user->getLastLoginAt()?->format('Y-m-d H:i:s');
 
         if (!$ar->save()) {
-            throw new RuntimeException('Failed to save user: ' . implode(', ', $ar->getErrors()));
+            $errorMessages = [];
+            foreach ($ar->getErrors() as $field => $messages) {
+                $errorMessages[] = "$field: " . implode(', ', $messages);
+            }
+            throw new RuntimeException('Failed to save user: ' . implode('; ', $errorMessages));
         }
     }
 
@@ -193,6 +197,7 @@ class DbUserRepository implements IUserRepository
     }
 
     /**
+     * @param array<string, mixed> $row
      * @throws Exception
      */
     private function hydrateFromArray(array $row): User

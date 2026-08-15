@@ -35,7 +35,11 @@ class DbUserIdentityRepository implements IUserIdentityRepository
         $ar->created_at         = $identity->getCreatedAt()->format('Y-m-d H:i:s');
 
         if (!$ar->save()) {
-            throw new RuntimeException('Failed to save user identity: ' . implode(', ', $ar->getErrors()));
+            $errorMessages = [];
+            foreach ($ar->getErrors() as $field => $messages) {
+                $errorMessages[] = "$field: " . implode(', ', $messages);
+            }
+            throw new RuntimeException('Failed to save user identity: ' . implode('; ', $errorMessages));
         }
     }
 

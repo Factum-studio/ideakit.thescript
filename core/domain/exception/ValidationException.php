@@ -10,6 +10,9 @@ class ValidationException extends DomainException
 {
     private array $errors;
 
+    /**
+     * @param array<string, array<string>> $errors
+     */
     public function __construct(
         string     $message     = 'Validation failed',
         array      $errors      = [],
