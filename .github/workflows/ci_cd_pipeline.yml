@@ -112,6 +112,20 @@ jobs:
       - name: Install dependencies
         run: composer install --no-progress --prefer-dist
 
+      - name: Create .env file for tests
+        run: |
+          cat > .env << EOF
+          DB_DSN=pgsql:host=localhost;port=5432;dbname=ideakit_test
+          DB_USERNAME=ideakit
+          DB_PASSWORD=local-development-only
+          ADMIN_EMAIL=admin@example.test
+          SENDER_EMAIL=no-reply@example.test
+          SENDER_NAME=IDEAKIT
+          APP_NAME=IDEAKIT
+          APP_ENV=test
+          APP_DEBUG=true
+          EOF
+
       - name: Start test environment (PostgreSQL)
         run: |
           docker compose up -d postgres
@@ -119,14 +133,6 @@ jobs:
           docker compose exec postgres createdb -U ideakit ideakit_test || echo "Database already exists"
           
       - name: Run migrations for test DB
-        env:
-          DB_DSN: pgsql:host=localhost;port=5432;dbname=ideakit_test
-          DB_USERNAME: ideakit
-          DB_PASSWORD: local-development-only
-          ADMIN_EMAIL: admin@example.test
-          SENDER_EMAIL: no-reply@example.test
-          SENDER_NAME: IDEAKIT
-          APP_NAME: IDEAKIT
         run: |
           php tests/bin/yii migrate/up --interactive=0
 
