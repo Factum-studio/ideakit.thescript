@@ -7,6 +7,8 @@ use core\application\command\UpdateUserCommand;
 use core\application\handler\UpdateUserHandler;
 use core\application\port\IUserRepository;
 use core\domain\entity\User;
+use core\domain\exception\PermissionDeniedException;
+use core\domain\exception\UserAlreadyExistsException;
 use core\domain\exception\UserNotFoundException;
 use core\domain\valueObject\UserId;
 use core\domain\valueObject\Email;
@@ -19,7 +21,7 @@ use Ramsey\Uuid\Uuid;
 
 class UpdateUserHandlerTest extends Unit
 {
-    private function createUser(string $id): User
+    private function createUser(string $id, string $role = 'user'): User
     {
         return new User(
             new UserId($id),
@@ -28,7 +30,7 @@ class UpdateUserHandlerTest extends Unit
             'Michael',
             new Email('john@example.com'),
             new Phone('+1234567890'),
-            new Role('user'),
+            new Role($role),
             'Developer',
             new UserStatus(1),
             'authKey',
@@ -39,206 +41,397 @@ class UpdateUserHandlerTest extends Unit
     }
 
     /**
-     * @throws UserNotFoundException
      * @throws Exception
+     * @throws UserNotFoundException
+     * @throws UserAlreadyExistsException
+     * @throws PermissionDeniedException
      */
-    public function testHandleSuccess(): void
+    public function testHandleSuccessAsAdmin(): void
     {
-        $this->markTestSkipped('WARNING: if we want passing null to reset the field, we need to change the logic; for now, this test fails :(');
-        $userId = (string) UserId::generate();
+        $actorId = UserId::generate();
+        $targetId = UserId::generate();
+
+        $actor = $this->createUser($actorId->value(), 'admin');
+        $target = $this->createUser($targetId->value(), 'user');
+
         $userRepo = $this->createMock(IUserRepository::class);
 
-        $existingUser = $this->createUser($userId);
-        $userRepo->expects($this->once())
+        $userRepo->expects($this->exactly(2))
             ->method('findById')
-            ->willReturn($existingUser);
+            ->willReturnCallback(function ($id) use ($actorId, $actor, $targetId, $target) {
+                if ($id->value() === $actorId->value()) {
+                    return $actor;
+                }
+                if ($id->value() === $targetId->value()) {
+                    return $target;
+                }
+                return null;
+            });
+
+        $userRepo->expects($this->once())
+            ->method('findByEmail')
+            ->willReturn(null);
+        $userRepo->expects($this->once())
+            ->method('findByPhone')
+            ->willReturn(null);
 
         $userRepo->expects($this->once())
             ->method('save')
-            ->with($this->callback(function ($user) use ($userId) {
-                return $user instanceof User
-                    && $user->getId()->value() === $userId
-                    && $user->getSurname() === 'Smith'
-                    && $user->getName() === 'Jane'
-                    && $user->getPatronymic() === null
-                    && $user->getEmail()->value() === 'jane@example.com'
-                    && $user->getPhone()->value() === '+0987654321'
-                    && $user->getRole()->value() === 'admin'
-                    && $user->getPost() === 'Manager'
-                    && $user->getStatus()->value() === 0
-                    && $user->getAuthKey() === 'authKey'; // не изменился
-            }));
+            ->with($target);
 
         $handler = new UpdateUserHandler($userRepo);
         $command = new UpdateUserCommand(
-            $userId,
-            'Smith',
-            'Jane',
-            null,
-            'jane@example.com',
-            '+0987654321',
-            'admin',
-            'Manager',
-            0
+            userId: $targetId->value(),
+            updatedBy: $actorId->value(),
+            surname: 'Smith',
+            name: 'Jane',
+            email: 'jane@example.com',
+            phone: '+9876543210'
+        );
+        $handler->handle($command);
+
+        $this->assertEquals('Smith', $target->getSurname());
+        $this->assertEquals('Jane', $target->getName());
+        $this->assertEquals('Michael', $target->getPatronymic());
+        $this->assertEquals('jane@example.com', $target->getEmail()->value());
+        $this->assertEquals('+9876543210', $target->getPhone()->value());
+        $this->assertEquals('Developer', $target->getPost());
+    }
+
+    /**
+     * @throws Exception
+     * @throws UserNotFoundException
+     * @throws UserAlreadyExistsException
+     * @throws PermissionDeniedException
+     */
+    public function testHandleSuccessAsSelf(): void
+    {
+        $userId = UserId::generate();
+        $user = $this->createUser($userId->value(), 'user');
+
+        $userRepo = $this->createMock(IUserRepository::class);
+
+        // Ожидаем два вызова findById – оба для одного и того же пользователя
+        $userRepo->expects($this->exactly(2))
+            ->method('findById')
+            ->with($userId)
+            ->willReturn($user);
+
+        // Поскольку в команде email и phone не передаются, вызовы findByEmail/findByPhone не происходят
+        $userRepo->expects($this->never())
+            ->method('findByEmail');
+        $userRepo->expects($this->never())
+            ->method('findByPhone');
+
+        $userRepo->expects($this->once())
+            ->method('save')
+            ->with($user);
+
+        $handler = new UpdateUserHandler($userRepo);
+        $command = new UpdateUserCommand(
+            userId: $userId->value(),
+            updatedBy: $userId->value(),
+            surname: 'Self',
+            name: 'Updater'
+        );
+        $handler->handle($command);
+
+        $this->assertEquals('Self', $user->getSurname());
+        $this->assertEquals('Updater', $user->getName());
+    }
+
+    /**
+     * @throws Exception
+     * @throws UserNotFoundException
+     * @throws UserAlreadyExistsException
+     */
+    public function testHandlePermissionDenied(): void
+    {
+        $actorId = UserId::generate();
+        $targetId = UserId::generate();
+
+        $actor = $this->createUser($actorId->value(), 'user'); // не админ, не self
+        $target = $this->createUser($targetId->value(), 'user');
+
+        $userRepo = $this->createMock(IUserRepository::class);
+
+        // Ожидаем только один вызов findById – для актора
+        $userRepo->expects($this->once())
+            ->method('findById')
+            ->with($actorId)
+            ->willReturn($actor);
+
+        $this->expectException(PermissionDeniedException::class);
+        $this->expectExceptionMessage('You can only edit your own profile.');
+
+        $handler = new UpdateUserHandler($userRepo);
+        $command = new UpdateUserCommand(
+            userId: $targetId->value(),
+            updatedBy: $actorId->value(),
+            surname: 'Hack'
         );
         $handler->handle($command);
     }
 
     /**
      * @throws Exception
+     * @throws UserAlreadyExistsException
+     * @throws PermissionDeniedException
      */
-    public function testHandleUserNotFoundThrowsException(): void
+    public function testHandleActorNotFound(): void
     {
-        $userRepo = $this->createMock(IUserRepository::class);
+        $actorId = UserId::generate();
+        $targetId = UserId::generate();
 
-        $nonExistingId = Uuid::uuid4()->toString();
+        $userRepo = $this->createMock(IUserRepository::class);
 
         $userRepo->expects($this->once())
             ->method('findById')
-            ->with($this->callback(fn($id) => $id->value() === $nonExistingId))
+            ->with($actorId)
             ->willReturn(null);
 
         $this->expectException(UserNotFoundException::class);
-
-        $handler = new UpdateUserHandler($userRepo);
-        $command = new UpdateUserCommand($nonExistingId);
-        $handler->handle($command);
-    }
-
-    /**
-     * @throws UserNotFoundException
-     * @throws Exception
-     */
-    public function testHandlePartialUpdateOnlyNameAndRole(): void
-    {
-        $userId = (string) UserId::generate();
-        $userRepo = $this->createMock(IUserRepository::class);
-
-        $existingUser = $this->createUser($userId);
-        $userRepo->expects($this->once())
-            ->method('findById')
-            ->willReturn($existingUser);
-
-        $userRepo->expects($this->once())
-            ->method('save')
-            ->with($this->callback(function ($user) {
-                return $user->getSurname() === 'Doe' // не изменилось
-                    && $user->getName() === 'Robert' // изменилось
-                    && $user->getPatronymic() === 'Michael' // осталось
-                    && $user->getEmail()->value() === 'john@example.com' // осталось
-                    && $user->getPhone()->value() === '+1234567890' // осталось
-                    && $user->getRole()->value() === 'manager' // изменилось
-                    && $user->getPost() === 'Developer' // осталось
-                    && $user->getStatus()->value() === 1; // осталось
-            }));
+        $this->expectExceptionMessage("Actor with ID {$actorId->value()} not found");
 
         $handler = new UpdateUserHandler($userRepo);
         $command = new UpdateUserCommand(
-            $userId,
-            null, // surname не меняем
-            'Robert',
-            null,
-            null,
-            null,
-            'manager',
-            null,
-            null
+            userId: $targetId->value(),
+            updatedBy: $actorId->value()
         );
         $handler->handle($command);
     }
 
     /**
-     * @throws UserNotFoundException
      * @throws Exception
+     * @throws UserAlreadyExistsException
+     * @throws PermissionDeniedException
      */
-    public function testHandleUpdateWithNoChanges(): void
+    public function testHandleTargetNotFound(): void
     {
-        $userId = (string) UserId::generate();
+        $actorId = UserId::generate();
+        $targetId = UserId::generate();
+
+        $actor = $this->createUser($actorId->value(), 'admin');
+
         $userRepo = $this->createMock(IUserRepository::class);
 
-        $existingUser = $this->createUser($userId);
-        $userRepo->expects($this->once())
+        $userRepo->expects($this->exactly(2))
             ->method('findById')
-            ->willReturn($existingUser);
+            ->willReturnCallback(function ($id) use ($actorId, $actor, $targetId) {
+                if ($id->value() === $actorId->value()) {
+                    return $actor;
+                }
+                if ($id->value() === $targetId->value()) {
+                    return null;
+                }
+                return null;
+            });
 
-        // Проверяем, что save вызывается с пользователем, у которого ничего не изменилось
-        $userRepo->expects($this->once())
-            ->method('save')
-            ->with($this->callback(function ($user) use ($existingUser) {
-                return $user->getSurname() === $existingUser->getSurname()
-                    && $user->getName() === $existingUser->getName()
-                    && $user->getRole()->value() === $existingUser->getRole()->value()
-                    && $user->getStatus()->value() === $existingUser->getStatus()->value()
-                    && $user->getEmail()?->value() === $existingUser->getEmail()?->value()
-                    && $user->getPhone()?->value() === $existingUser->getPhone()?->value();
-            }));
-
-        $handler = new UpdateUserHandler($userRepo);
-        $command = new UpdateUserCommand($userId); // все поля null
-        $handler->handle($command);
-    }
-
-    /**
-     * @throws UserNotFoundException
-     * @throws Exception
-     */
-    public function testHandleUpdateStatusOnly(): void
-    {
-        $userId = (string) UserId::generate();
-        $userRepo = $this->createMock(IUserRepository::class);
-
-        $existingUser = $this->createUser($userId);
-        $userRepo->expects($this->once())
-            ->method('findById')
-            ->willReturn($existingUser);
-
-        $userRepo->expects($this->once())
-            ->method('save')
-            ->with($this->callback(function ($user) {
-                return $user->getStatus()->value() === 0
-                    && $user->getSurname() === 'Doe'
-                    && $user->getRole()->value() === 'user';
-            }));
-
-        $handler = new UpdateUserHandler($userRepo);
-        $command = new UpdateUserCommand($userId, null, null, null, null, null, null, null, 0);
-        $handler->handle($command);
-    }
-
-    /**
-     * @throws UserNotFoundException
-     * @throws Exception
-     */
-    public function testHandleUpdateEmailAndPhone(): void
-    {
-        $userId = (string) UserId::generate();
-        $userRepo = $this->createMock(IUserRepository::class);
-
-        $existingUser = $this->createUser($userId);
-        $userRepo->expects($this->once())
-            ->method('findById')
-            ->willReturn($existingUser);
-
-        $userRepo->expects($this->once())
-            ->method('save')
-            ->with($this->callback(function ($user) {
-                return $user->getEmail()->value() === 'new@example.com'
-                    && $user->getPhone()->value() === '+1111111111'
-                    && $user->getSurname() === 'Doe'; // осталось
-            }));
+        $this->expectException(UserNotFoundException::class);
+        $this->expectExceptionMessage("User with ID {$targetId->value()} not found");
 
         $handler = new UpdateUserHandler($userRepo);
         $command = new UpdateUserCommand(
-            $userId,
-            null,
-            null,
-            null,
-            'new@example.com',
-            '+1111111111',
-            null,
-            null,
-            null
+            userId: $targetId->value(),
+            updatedBy: $actorId->value()
         );
         $handler->handle($command);
+    }
+
+    /**
+     * @throws Exception
+     * @throws UserNotFoundException
+     * @throws PermissionDeniedException
+     */
+    public function testHandleEmailAlreadyExists(): void
+    {
+        $actorId = UserId::generate();
+        $targetId = UserId::generate();
+        $otherUserId = UserId::generate();
+
+        $actor = $this->createUser($actorId->value(), 'admin');
+        $target = $this->createUser($targetId->value(), 'user');
+        $otherUser = $this->createUser($otherUserId->value(), 'user');
+
+        $userRepo = $this->createMock(IUserRepository::class);
+
+        $userRepo->expects($this->exactly(2))
+            ->method('findById')
+            ->willReturnCallback(function ($id) use ($actorId, $actor, $targetId, $target) {
+                if ($id->value() === $actorId->value()) {
+                    return $actor;
+                }
+                if ($id->value() === $targetId->value()) {
+                    return $target;
+                }
+                return null;
+            });
+
+        $userRepo->expects($this->once())
+            ->method('findByEmail')
+            ->willReturn($otherUser);
+
+        $this->expectException(UserAlreadyExistsException::class);
+        $this->expectExceptionMessage("Email 'john@example.com' is already taken by another user.");
+
+        $handler = new UpdateUserHandler($userRepo);
+        $command = new UpdateUserCommand(
+            userId: $targetId->value(),
+            updatedBy: $actorId->value(),
+            email: 'john@example.com'
+        );
+        $handler->handle($command);
+    }
+
+    /**
+     * @throws Exception
+     * @throws UserNotFoundException
+     * @throws PermissionDeniedException
+     */
+    public function testHandlePhoneAlreadyExists(): void
+    {
+        $actorId = UserId::generate();
+        $targetId = UserId::generate();
+        $otherUserId = UserId::generate();
+
+        $actor = $this->createUser($actorId->value(), 'admin');
+        $target = $this->createUser($targetId->value(), 'user');
+        $otherUser = $this->createUser($otherUserId->value(), 'user');
+
+        $userRepo = $this->createMock(IUserRepository::class);
+
+        $userRepo->expects($this->exactly(2))
+            ->method('findById')
+            ->willReturnCallback(function ($id) use ($actorId, $actor, $targetId, $target) {
+                if ($id->value() === $actorId->value()) {
+                    return $actor;
+                }
+                if ($id->value() === $targetId->value()) {
+                    return $target;
+                }
+                return null;
+            });
+
+        $userRepo->expects($this->once())
+            ->method('findByPhone')
+            ->willReturn($otherUser);
+
+        $this->expectException(UserAlreadyExistsException::class);
+        $this->expectExceptionMessage("Phone '+1234567890' is already taken by another user.");
+
+        $handler = new UpdateUserHandler($userRepo);
+        $command = new UpdateUserCommand(
+            userId: $targetId->value(),
+            updatedBy: $actorId->value(),
+            phone: '+1234567890'
+        );
+        $handler->handle($command);
+    }
+
+    /**
+     * @throws Exception
+     * @throws UserNotFoundException
+     * @throws UserAlreadyExistsException
+     * @throws PermissionDeniedException
+     */
+    public function testHandlePartialUpdate(): void
+    {
+        $actorId = UserId::generate();
+        $targetId = UserId::generate();
+
+        $actor = $this->createUser($actorId->value(), 'admin');
+        $target = $this->createUser($targetId->value(), 'user');
+
+        $userRepo = $this->createMock(IUserRepository::class);
+
+        $userRepo->expects($this->exactly(2))
+            ->method('findById')
+            ->willReturnCallback(function ($id) use ($actorId, $actor, $targetId, $target) {
+                if ($id->value() === $actorId->value()) {
+                    return $actor;
+                }
+                if ($id->value() === $targetId->value()) {
+                    return $target;
+                }
+                return null;
+            });
+
+        // Поскольку в команде не переданы email и phone, вызовы findByEmail/findByPhone не будут выполнены
+        $userRepo->expects($this->never())
+            ->method('findByEmail');
+        $userRepo->expects($this->never())
+            ->method('findByPhone');
+
+        $userRepo->expects($this->once())
+            ->method('save')
+            ->with($target);
+
+        $handler = new UpdateUserHandler($userRepo);
+        $command = new UpdateUserCommand(
+            userId: $targetId->value(),
+            updatedBy: $actorId->value(),
+            surname: 'NewSurname'
+        );
+        $handler->handle($command);
+
+        $this->assertEquals('NewSurname', $target->getSurname());
+        $this->assertEquals('John', $target->getName());
+        $this->assertEquals('Michael', $target->getPatronymic());
+        $this->assertEquals('john@example.com', $target->getEmail()->value());
+        $this->assertEquals('+1234567890', $target->getPhone()->value());
+        $this->assertEquals('Developer', $target->getPost());
+    }
+
+    /**
+     * @throws Exception
+     * @throws UserNotFoundException
+     * @throws UserAlreadyExistsException
+     * @throws PermissionDeniedException
+     */
+    public function testHandleUpdateWithSameEmailAndPhone(): void
+    {
+        $actorId = UserId::generate();
+        $targetId = UserId::generate();
+
+        $actor = $this->createUser($actorId->value(), 'admin');
+        $target = $this->createUser($targetId->value(), 'user');
+
+        $userRepo = $this->createMock(IUserRepository::class);
+
+        $userRepo->expects($this->exactly(2))
+            ->method('findById')
+            ->willReturnCallback(function ($id) use ($actorId, $actor, $targetId, $target) {
+                if ($id->value() === $actorId->value()) {
+                    return $actor;
+                }
+                if ($id->value() === $targetId->value()) {
+                    return $target;
+                }
+                return null;
+            });
+
+        // findByEmail возвращает того же пользователя (себя) – конфликта нет
+        $userRepo->expects($this->once())
+            ->method('findByEmail')
+            ->willReturn($target);
+        $userRepo->expects($this->once())
+            ->method('findByPhone')
+            ->willReturn($target);
+
+        $userRepo->expects($this->once())
+            ->method('save')
+            ->with($target);
+
+        $handler = new UpdateUserHandler($userRepo);
+        $command = new UpdateUserCommand(
+            userId: $targetId->value(),
+            updatedBy: $actorId->value(),
+            email: 'john@example.com',
+            phone: '+1234567890'
+        );
+        $handler->handle($command);
+
+        $this->assertEquals('john@example.com', $target->getEmail()->value());
+        $this->assertEquals('+1234567890', $target->getPhone()->value());
     }
 }

@@ -67,9 +67,9 @@ class UpdateUserHandler
             }
         }
 
-        $surname    = $command->surname ?? $user->getSurname();
-        $name       = $command->name ?? $user->getName();
-        $patronymic = $command->patronymic ?? $user->getPatronymic();
+        $surname    = $command->surname !== null ? $command->surname : $user->getSurname();
+        $name       = $command->name !== null ? $command->name : $user->getName();
+        $patronymic = $command->patronymic !== null ? $command->patronymic : $user->getPatronymic();
         $email      = $command->email !== null ? new Email($command->email) : $user->getEmail();
         $phone      = $command->phone !== null ? new Phone($command->phone) : $user->getPhone();
         $post       = $user->getPost(); // не обновляется
