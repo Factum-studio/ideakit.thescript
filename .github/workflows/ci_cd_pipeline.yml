@@ -92,10 +92,45 @@ jobs:
           echo "❌  В коде обнаружены критические проблемы. Исправь их перед слиянием с ${{ github.base_ref }}."
           exit 418
 
-  deploy:
+  tests:
     runs-on: ubuntu-latest
     needs: [linter, unclestan]
     if: github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'dev')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          tools: composer
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-progress --prefer-dist
+
+      - name: Start test environment (PostgreSQL)
+        run: |
+          docker compose up -d postgres
+          sleep 5
+
+      - name: Run migrations for test DB
+        run: |
+          php tests/bin/yii migrate/up --interactive=0
+
+      - name: Run Codeception tests
+        run: |
+          vendor/bin/codecept run
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [linter, unclestan, tests]
+    if: |
+      github.event_name == 'push' &&
+      (github.ref_name == 'main' || github.ref_name == 'dev') &&
+      needs.linter.result == 'success' &&
+      needs.unclestan.result == 'success' &&
+      (needs.tests.result == 'success' || needs.tests.result == 'skipped')
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
