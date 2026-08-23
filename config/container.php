@@ -10,6 +10,7 @@ use core\application\handler\GetUserByIdentityHandler;
 use core\application\handler\GetUserHandler;
 use core\application\handler\RegenerateAuthKeyHandler;
 use core\application\handler\UpdateUserHandler;
+use core\application\port\IJwtManager;
 use core\application\port\ISecurityService;
 use core\application\port\IUserIdentityRepository;
 use core\application\port\IUserRepository;
@@ -33,7 +34,7 @@ $container->setSingleton(IUserIdentityRepository::class, function () {
 });
 
 // ---------- JWT ----------
-$container->setSingleton(JwtManager::class, function () {
+$container->setSingleton(IJwtManager::class, function () {
     $secret = $_ENV['JWT_SECRET'] ?? null;
 
     if (empty($secret) || !is_string($secret)) {
@@ -48,7 +49,7 @@ $container->setSingleton(JwtManager::class, function () {
 $container->setSingleton(JwtValidator::class, function () use ($container) {
     return new JwtValidator(
         $container->get(
-            JwtManager::class,
+            IJwtManager::class,
         ),
     );
 });
@@ -63,7 +64,7 @@ $container->setSingleton(AuthenticateUseCase::class, function () use ($container
     return new AuthenticateUseCase(
         $container->get(IUserRepository::class),
         $container->get(IUserIdentityRepository::class),
-        $container->get(JwtManager::class),
+        $container->get(IJwtManager::class),
         $container->get(CreateUserHandler::class),
         $container->get(AddUserIdentityHandler::class),
     );
@@ -128,7 +129,7 @@ $container->set(RegenerateAuthKeyHandler::class, function () use ($container) {
 $container->setSingleton(JwtMiddleware::class, function () use ($container) {
     return new JwtMiddleware(
         $container->get(
-            JwtManager::class,
+            IJwtManager::class,
         ),
     );
 });

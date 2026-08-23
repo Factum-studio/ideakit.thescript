@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace core\infrastructure\jwt;
 
+use core\application\port\IJwtManager;
 use core\domain\entity\User;
 use core\application\dto\JwtPayloadDto;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
 use Throwable;
 
-class JwtManager
+class JwtManager implements IJwtManager
 {
     private string $secret;
     private int $ttl;
