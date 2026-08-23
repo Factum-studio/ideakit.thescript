@@ -128,8 +128,7 @@ $container->set(RegenerateAuthKeyHandler::class, function () use ($container) {
 // ---------- Middleware ----------
 $container->setSingleton(JwtMiddleware::class, function () use ($container) {
     return new JwtMiddleware(
-        $container->get(
-            IJwtManager::class,
-        ),
+        $container->get(IJwtManager::class),
+        $container->get(IUserRepository::class),
     );
 });

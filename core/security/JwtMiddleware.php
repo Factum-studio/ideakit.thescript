@@ -4,28 +4,30 @@ declare(strict_types=1);
 
 namespace core\security;
 
+use core\application\port\IJwtManager;
 use core\application\port\IUserRepository;
 use core\domain\valueObject\UserId;
 use Yii;
 use yii\base\ActionFilter;
-use yii\base\InvalidConfigException;
-use yii\di\NotInstantiableException;
 use yii\web\UnauthorizedHttpException;
 use core\infrastructure\jwt\JwtManager;
 
 class JwtMiddleware extends ActionFilter
 {
     private JwtManager $jwtManager;
+    private IUserRepository $userRepository;
 
-    public function __construct(JwtManager $jwtManager, $config = [])
-    {
-        $this->jwtManager = $jwtManager;
+    public function __construct(
+        IJwtManager $jwtManager,
+        IUserRepository $userRepository,
+        $config = []
+    ) {
+        $this->jwtManager       = $jwtManager;
+        $this->userRepository   = $userRepository;
         parent::__construct($config);
     }
 
     /**
-     * @throws NotInstantiableException
-     * @throws InvalidConfigException
      * @throws UnauthorizedHttpException
      */
     public function handle(): void
@@ -53,11 +55,14 @@ class JwtMiddleware extends ActionFilter
             throw new UnauthorizedHttpException('Invalid or expired token.');
         }
 
-        /** @var IUserRepository $userRepo */
-        $userRepo = Yii::$container->get(IUserRepository::class);
-        $user = $userRepo->findById(new UserId($payload->userId));
+        $user = $this->userRepository->findById(new UserId($payload->userId));
         if (!$user || !$user->getStatus()->isActive()) {
             throw new UnauthorizedHttpException('Account is inactive or not found.');
+        }
+
+        // Проверяем соответствие auth_key
+        if ($payload->authKey && $user->getAuthKey() !== $payload->authKey) {
+            throw new UnauthorizedHttpException('Token revoked. Please re-authenticate.');
         }
 
         $identity = new YiiIdentity($user);
