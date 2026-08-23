@@ -8,6 +8,7 @@ use core\application\handler\RegenerateAuthKeyHandler;
 use core\application\port\IUserRepository;
 use core\application\port\ISecurityService;
 use core\domain\entity\User;
+use core\domain\exception\UserNotFoundException;
 use core\domain\valueObject\UserId;
 use core\domain\valueObject\Email;
 use core\domain\valueObject\Phone;
@@ -41,6 +42,7 @@ class RegenerateAuthKeyHandlerTest extends Unit
 
     /**
      * @throws Exception
+     * @throws UserNotFoundException
      */
     public function testHandleSuccess(): void
     {
@@ -89,8 +91,8 @@ class RegenerateAuthKeyHandlerTest extends Unit
             ->with($this->callback(fn($id) => $id->value() === $nonExistingId))
             ->willReturn(null);
 
-        $this->expectException(RuntimeException::class);
-        $this->expectExceptionMessage('User not found');
+        $this->expectException(UserNotFoundException::class);
+        $this->expectExceptionMessage("User with ID {$nonExistingId} not found");
 
         $handler = new RegenerateAuthKeyHandler($userRepo, $security);
         $command = new RegenerateAuthKeyCommand($nonExistingId);
