@@ -10,11 +10,10 @@ use core\domain\valueObject\UserId;
 use Yii;
 use yii\base\ActionFilter;
 use yii\web\UnauthorizedHttpException;
-use core\infrastructure\jwt\JwtManager;
 
 class JwtMiddleware extends ActionFilter
 {
-    private JwtManager $jwtManager;
+    private IJwtManager $jwtManager;
     private IUserRepository $userRepository;
 
     public function __construct(
