@@ -171,4 +171,10 @@ class User
         $this->authKey      = $newAuthKey;
         $this->updatedAt    = new DateTimeImmutable();
     }
+
+    public function updatePost(?string $post): void
+    {
+        $this->post         = $post;
+        $this->updatedAt    = new DateTimeImmutable();
+    }
 }
