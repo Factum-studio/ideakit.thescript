@@ -116,8 +116,17 @@ jobs:
         run: |
           docker compose up -d postgres
           sleep 5
-
+          docker compose exec postgres createdb -U ideakit ideakit_test || echo "Database already exists"
+          
       - name: Run migrations for test DB
+        env:
+          DB_DSN: pgsql:host=localhost;port=5432;dbname=ideakit_test
+          DB_USERNAME: ideakit
+          DB_PASSWORD: local-development-only
+          ADMIN_EMAIL: admin@example.test
+          SENDER_EMAIL: no-reply@example.test
+          SENDER_NAME: IDEAKIT
+          APP_NAME: IDEAKIT
         run: |
           php tests/bin/yii migrate/up --interactive=0
 
