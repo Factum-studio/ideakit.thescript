@@ -20,7 +20,7 @@ class JwtMiddleware extends ActionFilter
     public function __construct(
         IJwtManager $jwtManager,
         IUserRepository $userRepository,
-        $config = []
+        $config = [],
     ) {
         $this->jwtManager       = $jwtManager;
         $this->userRepository   = $userRepository;
