@@ -7,8 +7,8 @@ namespace core\application\handler;
 use core\application\command\RegenerateAuthKeyCommand;
 use core\application\port\IUserRepository;
 use core\application\port\ISecurityService;
+use core\domain\exception\UserNotFoundException;
 use core\domain\valueObject\UserId;
-use RuntimeException;
 
 class RegenerateAuthKeyHandler
 {
@@ -23,11 +23,14 @@ class RegenerateAuthKeyHandler
         $this->securityService  = $securityService;
     }
 
+    /**
+     * @throws UserNotFoundException
+     */
     public function handle(RegenerateAuthKeyCommand $command): void
     {
         $user = $this->userRepository->findById(new UserId($command->userId));
         if (!$user) {
-            throw new RuntimeException('User not found');
+            throw new UserNotFoundException("User with ID {$command->userId} not found");
         }
 
         $newAuthKey = $this->securityService->generateRandomString(32);
