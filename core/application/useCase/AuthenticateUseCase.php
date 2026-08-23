@@ -11,38 +11,25 @@ use core\application\dto\AuthResponseDto;
 use core\application\dto\UserDto;
 use core\application\handler\AddUserIdentityHandler;
 use core\application\handler\CreateUserHandler;
-use core\application\port\ISecurityService;
+use core\application\port\IJwtManager;
 use core\application\port\IUserRepository;
 use core\application\port\IUserIdentityRepository;
-use core\domain\entity\User;
-use core\domain\entity\UserIdentity;
 use core\domain\exception\IdentityAlreadyExistsException;
 use core\domain\exception\UserAlreadyExistsException;
 use core\domain\exception\UserNotFoundException;
-use core\domain\valueObject\UserId;
-use core\domain\valueObject\Email;
-use core\domain\valueObject\Phone;
-use core\domain\valueObject\Role;
-use core\domain\valueObject\UserStatus;
-use core\domain\valueObject\UserIdentityId;
-use core\infrastructure\jwt\JwtManager;
-use DateTimeImmutable;
-use RuntimeException;
-use Yii;
-use yii\base\Exception;
 
 class AuthenticateUseCase
 {
     private IUserRepository $userRepository;
     private IUserIdentityRepository $identityRepository;
-    private JwtManager $jwtManager;
+    private IJwtManager $jwtManager;
     private CreateUserHandler $createUserHandler;
     private AddUserIdentityHandler $addIdentityHandler;
 
     public function __construct(
         IUserRepository $userRepository,
         IUserIdentityRepository $identityRepository,
-        JwtManager $jwtManager,
+        IJwtManager $jwtManager,
         CreateUserHandler $createUserHandler,
         AddUserIdentityHandler $addIdentityHandler,
     ) {
@@ -79,9 +66,9 @@ class AuthenticateUseCase
                 patronymic: $request->userData['patronymic'] ?? null,
                 email: $request->userData['email'] ?? null,
                 phone: $request->userData['phone'] ?? null,
-                role: $request->userData['role'] ?? 'user',
+                role: 'user',
                 post: $request->userData['post'] ?? null,
-                status: (int)($request->userData['status'] ?? 1),
+                status: 1,
             );
             $user = $this->createUserHandler->handle($createCommand);
         }
