@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use core\application\handler\AddUserIdentityHandler;
+use core\application\handler\ChangeUserRoleHandler;
 use core\application\handler\CreateUserHandler;
 use core\application\handler\DeleteUserHandler;
 use core\application\handler\FindUserHandler;
@@ -80,6 +81,12 @@ $container->set(CreateUserHandler::class, function () use ($container) {
 
 $container->set(UpdateUserHandler::class, function () use ($container) {
     return new UpdateUserHandler(
+        $container->get(IUserRepository::class),
+    );
+});
+
+$container->set(ChangeUserRoleHandler::class, function () use ($container) {
+    return new ChangeUserRoleHandler(
         $container->get(IUserRepository::class),
     );
 });
