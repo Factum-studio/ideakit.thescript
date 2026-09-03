@@ -6,6 +6,6 @@ namespace modules\users\domain\exception;
 
 use DomainException;
 
-final class InvalidProviderClientId extends DomainException
+final class TelegramProfileStateViolationException extends DomainException
 {
 }

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace modules\users\domain\valueObject;
 
-use modules\users\domain\exception\InvalidTelegramProfileSnapshot;
+use modules\users\domain\exception\InvalidTelegramProfileSnapshotException;
 
 final class TelegramProfileSnapshot
 {
@@ -78,15 +78,15 @@ final class TelegramProfileSnapshot
         }
 
         if (!mb_check_encoding($value, 'UTF-8')) {
-            throw new InvalidTelegramProfileSnapshot($field . '_invalid_utf8');
+            throw new InvalidTelegramProfileSnapshotException($field . '_invalid_utf8');
         }
 
         if (mb_strlen($value, 'UTF-8') > $maximumLength) {
-            throw new InvalidTelegramProfileSnapshot($field . '_too_long');
+            throw new InvalidTelegramProfileSnapshotException($field . '_too_long');
         }
 
         if (preg_match('/\p{Cc}/u', $value) === 1) {
-            throw new InvalidTelegramProfileSnapshot($field . '_control_character');
+            throw new InvalidTelegramProfileSnapshotException($field . '_control_character');
         }
 
         return $value;

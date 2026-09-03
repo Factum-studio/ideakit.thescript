@@ -6,6 +6,6 @@ namespace modules\users\domain\exception;
 
 use DomainException;
 
-final class TelegramProfileStateViolation extends DomainException
+final class InvalidTelegramProfileSnapshotException extends DomainException
 {
 }

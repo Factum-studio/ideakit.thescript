@@ -5,14 +5,14 @@ declare(strict_types=1);
 namespace tests\unit\modules\users\domain\entity;
 
 use Codeception\Test\Unit;
+use core\domain\valueObject\UserIdentityId;
 use DateTimeImmutable;
 use DateTimeZone;
 use modules\users\domain\entity\TelegramIdentityProfile;
-use modules\users\domain\exception\TelegramProfileStateViolation;
+use modules\users\domain\exception\TelegramProfileStateViolationException;
 use modules\users\domain\valueObject\TelegramBotStatus;
 use modules\users\domain\valueObject\TelegramIdentityProfileId;
 use modules\users\domain\valueObject\TelegramProfileSnapshot;
-use modules\users\domain\valueObject\UserIdentityId;
 
 final class TelegramIdentityProfileTest extends Unit
 {
@@ -21,20 +21,20 @@ final class TelegramIdentityProfileTest extends Unit
 
     public function testCreatesActiveProfileAtFirstIncomingInteraction(): void
     {
-        $id = TelegramIdentityProfileId::fromString(self::ID);
-        $userIdentityId = UserIdentityId::fromString(self::USER_IDENTITY_ID);
+        $id = new TelegramIdentityProfileId(self::ID);
+        $userIdentityId = new UserIdentityId(self::USER_IDENTITY_ID);
         $snapshot = self::snapshot('first_username');
         $seenAt = self::utc('2026-08-15 07:00:00');
 
         $profile = TelegramIdentityProfile::create($id, $userIdentityId, $snapshot, $seenAt);
 
-        self::assertSame($id, $profile->id());
-        self::assertSame($userIdentityId, $profile->userIdentityId());
-        self::assertSame($snapshot, $profile->profileSnapshot());
-        self::assertSame(TelegramBotStatus::ACTIVE, $profile->botStatus());
-        self::assertSame($seenAt, $profile->firstSeenAt());
-        self::assertSame($seenAt, $profile->lastSeenAt());
-        self::assertNull($profile->blockedAt());
+        self::assertSame($id, $profile->getId());
+        self::assertSame($userIdentityId, $profile->getUserIdentityId());
+        self::assertSame($snapshot, $profile->getProfileSnapshot());
+        self::assertSame(TelegramBotStatus::ACTIVE, $profile->getBotStatus());
+        self::assertSame($seenAt, $profile->getFirstSeenAt());
+        self::assertSame($seenAt, $profile->getLastSeenAt());
+        self::assertNull($profile->getBlockedAt());
         self::assertTrue($profile->canReceiveInitiatedMessages());
     }
 
@@ -48,8 +48,8 @@ final class TelegramIdentityProfileTest extends Unit
         bool $canReceiveInitiatedMessages,
     ): void {
         $profile = TelegramIdentityProfile::restore(
-            TelegramIdentityProfileId::fromString(self::ID),
-            UserIdentityId::fromString(self::USER_IDENTITY_ID),
+            new TelegramIdentityProfileId(self::ID),
+            new UserIdentityId(self::USER_IDENTITY_ID),
             $snapshot,
             $status,
             self::utc('2026-08-15 07:00:00'),
@@ -57,9 +57,9 @@ final class TelegramIdentityProfileTest extends Unit
             $blockedAt,
         );
 
-        self::assertSame($snapshot, $profile->profileSnapshot());
-        self::assertSame($status, $profile->botStatus());
-        self::assertSame($blockedAt, $profile->blockedAt());
+        self::assertSame($snapshot, $profile->getProfileSnapshot());
+        self::assertSame($status, $profile->getBotStatus());
+        self::assertSame($blockedAt, $profile->getBlockedAt());
         self::assertSame($canReceiveInitiatedMessages, $profile->canReceiveInitiatedMessages());
     }
 
@@ -80,12 +80,12 @@ final class TelegramIdentityProfileTest extends Unit
 
     public function testCreateRejectsNonUtcSeenAt(): void
     {
-        $this->expectException(TelegramProfileStateViolation::class);
+        $this->expectException(TelegramProfileStateViolationException::class);
         $this->expectExceptionMessage('seen_at_must_be_utc');
 
         TelegramIdentityProfile::create(
-            TelegramIdentityProfileId::fromString(self::ID),
-            UserIdentityId::fromString(self::USER_IDENTITY_ID),
+            new TelegramIdentityProfileId(self::ID),
+            new UserIdentityId(self::USER_IDENTITY_ID),
             self::snapshot('username'),
             self::nonUtc('2026-08-15 12:00:00'),
         );
@@ -102,12 +102,12 @@ final class TelegramIdentityProfileTest extends Unit
         ?DateTimeImmutable $blockedAt,
         string $reason,
     ): void {
-        $this->expectException(TelegramProfileStateViolation::class);
+        $this->expectException(TelegramProfileStateViolationException::class);
         $this->expectExceptionMessage($reason);
 
         TelegramIdentityProfile::restore(
-            TelegramIdentityProfileId::fromString(self::ID),
-            UserIdentityId::fromString(self::USER_IDENTITY_ID),
+            new TelegramIdentityProfileId(self::ID),
+            new UserIdentityId(self::USER_IDENTITY_ID),
             $snapshot,
             $status,
             $firstSeenAt,
@@ -215,8 +215,8 @@ final class TelegramIdentityProfileTest extends Unit
     ): void {
         $firstSeenAt = self::utc('2026-08-15 07:00:00');
         $profile = TelegramIdentityProfile::restore(
-            TelegramIdentityProfileId::fromString(self::ID),
-            UserIdentityId::fromString(self::USER_IDENTITY_ID),
+            new TelegramIdentityProfileId(self::ID),
+            new UserIdentityId(self::USER_IDENTITY_ID),
             self::snapshot('old_username'),
             $initialStatus,
             $firstSeenAt,
@@ -228,11 +228,11 @@ final class TelegramIdentityProfileTest extends Unit
 
         $profile->recordIncomingInteraction($newSnapshot, $seenAt);
 
-        self::assertSame($newSnapshot, $profile->profileSnapshot());
-        self::assertSame(TelegramBotStatus::ACTIVE, $profile->botStatus());
-        self::assertSame($firstSeenAt, $profile->firstSeenAt());
-        self::assertSame($seenAt, $profile->lastSeenAt());
-        self::assertNull($profile->blockedAt());
+        self::assertSame($newSnapshot, $profile->getProfileSnapshot());
+        self::assertSame(TelegramBotStatus::ACTIVE, $profile->getBotStatus());
+        self::assertSame($firstSeenAt, $profile->getFirstSeenAt());
+        self::assertSame($seenAt, $profile->getLastSeenAt());
+        self::assertNull($profile->getBlockedAt());
         self::assertTrue($profile->canReceiveInitiatedMessages());
     }
 
@@ -257,8 +257,8 @@ final class TelegramIdentityProfileTest extends Unit
         string $reason,
     ): void {
         $profile = TelegramIdentityProfile::restore(
-            TelegramIdentityProfileId::fromString(self::ID),
-            UserIdentityId::fromString(self::USER_IDENTITY_ID),
+            new TelegramIdentityProfileId(self::ID),
+            new UserIdentityId(self::USER_IDENTITY_ID),
             $initialStatus === TelegramBotStatus::ANONYMIZED
                 ? TelegramProfileSnapshot::empty()
                 : self::snapshot('old_username'),
@@ -268,7 +268,7 @@ final class TelegramIdentityProfileTest extends Unit
             null,
         );
 
-        $this->expectException(TelegramProfileStateViolation::class);
+        $this->expectException(TelegramProfileStateViolationException::class);
         $this->expectExceptionMessage($reason);
 
         $profile->recordIncomingInteraction(self::snapshot('new_username'), $seenAt);
@@ -301,8 +301,8 @@ final class TelegramIdentityProfileTest extends Unit
         $snapshot = self::snapshot('username');
         $seenAt = self::utc('2026-08-15 08:00:00');
         $profile = TelegramIdentityProfile::create(
-            TelegramIdentityProfileId::fromString(self::ID),
-            UserIdentityId::fromString(self::USER_IDENTITY_ID),
+            new TelegramIdentityProfileId(self::ID),
+            new UserIdentityId(self::USER_IDENTITY_ID),
             $snapshot,
             $seenAt,
         );
@@ -311,10 +311,10 @@ final class TelegramIdentityProfileTest extends Unit
         $profile->markBotBlocked($initialBlockedAt);
         $profile->markBotBlocked(self::utc('2026-08-15 10:00:00'));
 
-        self::assertSame($snapshot, $profile->profileSnapshot());
-        self::assertSame(TelegramBotStatus::BOT_BLOCKED, $profile->botStatus());
-        self::assertSame($seenAt, $profile->lastSeenAt());
-        self::assertSame($initialBlockedAt, $profile->blockedAt());
+        self::assertSame($snapshot, $profile->getProfileSnapshot());
+        self::assertSame(TelegramBotStatus::BOT_BLOCKED, $profile->getBotStatus());
+        self::assertSame($seenAt, $profile->getLastSeenAt());
+        self::assertSame($initialBlockedAt, $profile->getBlockedAt());
         self::assertFalse($profile->canReceiveInitiatedMessages());
     }
 
@@ -327,8 +327,8 @@ final class TelegramIdentityProfileTest extends Unit
         string $reason,
     ): void {
         $profile = TelegramIdentityProfile::restore(
-            TelegramIdentityProfileId::fromString(self::ID),
-            UserIdentityId::fromString(self::USER_IDENTITY_ID),
+            new TelegramIdentityProfileId(self::ID),
+            new UserIdentityId(self::USER_IDENTITY_ID),
             $initialStatus === TelegramBotStatus::ANONYMIZED
                 ? TelegramProfileSnapshot::empty()
                 : self::snapshot('username'),
@@ -338,7 +338,7 @@ final class TelegramIdentityProfileTest extends Unit
             null,
         );
 
-        $this->expectException(TelegramProfileStateViolation::class);
+        $this->expectException(TelegramProfileStateViolationException::class);
         $this->expectExceptionMessage($reason);
 
         $profile->markBotBlocked($blockedAt);
@@ -368,8 +368,8 @@ final class TelegramIdentityProfileTest extends Unit
 
     public function testAnonymizesIdempotentlyAndPreservesIdentityAndHistory(): void
     {
-        $id = TelegramIdentityProfileId::fromString(self::ID);
-        $userIdentityId = UserIdentityId::fromString(self::USER_IDENTITY_ID);
+        $id = new TelegramIdentityProfileId(self::ID);
+        $userIdentityId = new UserIdentityId(self::USER_IDENTITY_ID);
         $firstSeenAt = self::utc('2026-08-15 07:00:00');
         $lastSeenAt = self::utc('2026-08-15 08:00:00');
         $profile = TelegramIdentityProfile::restore(
@@ -385,13 +385,13 @@ final class TelegramIdentityProfileTest extends Unit
         $profile->anonymize();
         $profile->anonymize();
 
-        self::assertSame($id, $profile->id());
-        self::assertSame($userIdentityId, $profile->userIdentityId());
-        self::assertTrue($profile->profileSnapshot()->isEmpty());
-        self::assertSame(TelegramBotStatus::ANONYMIZED, $profile->botStatus());
-        self::assertSame($firstSeenAt, $profile->firstSeenAt());
-        self::assertSame($lastSeenAt, $profile->lastSeenAt());
-        self::assertNull($profile->blockedAt());
+        self::assertSame($id, $profile->getId());
+        self::assertSame($userIdentityId, $profile->getUserIdentityId());
+        self::assertTrue($profile->getProfileSnapshot()->isEmpty());
+        self::assertSame(TelegramBotStatus::ANONYMIZED, $profile->getBotStatus());
+        self::assertSame($firstSeenAt, $profile->getFirstSeenAt());
+        self::assertSame($lastSeenAt, $profile->getLastSeenAt());
+        self::assertNull($profile->getBlockedAt());
         self::assertFalse($profile->canReceiveInitiatedMessages());
     }
 

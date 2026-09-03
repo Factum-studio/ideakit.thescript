@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace modules\users\domain\valueObject;
 
-use modules\users\domain\exception\InvalidTelegramUserId;
+use modules\users\domain\exception\InvalidTelegramUserIdException;
 
 final class TelegramUserId
 {
@@ -16,8 +16,8 @@ final class TelegramUserId
 
     public static function fromString(string $value): self
     {
-        if (preg_match('/^[1-9][0-9]*$/', $value) !== 1) {
-            throw new InvalidTelegramUserId('non_canonical');
+        if (preg_match('/\A[1-9][0-9]*\z/', $value) !== 1) {
+            throw new InvalidTelegramUserIdException('non_canonical');
         }
 
         $maximumLength = strlen(self::POSTGRESQL_BIGINT_MAX);
@@ -27,20 +27,15 @@ final class TelegramUserId
             $valueLength > $maximumLength
             || ($valueLength === $maximumLength && strcmp($value, self::POSTGRESQL_BIGINT_MAX) > 0)
         ) {
-            throw new InvalidTelegramUserId('out_of_range');
+            throw new InvalidTelegramUserIdException('out_of_range');
         }
 
         return new self($value);
     }
 
-    public function toString(): string
+    public function value(): string
     {
         return $this->value;
-    }
-
-    public function toProviderClientId(): ProviderClientId
-    {
-        return ProviderClientId::fromString($this->value);
     }
 
     public function equals(self $other): bool

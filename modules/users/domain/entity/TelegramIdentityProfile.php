@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace modules\users\domain\entity;
 
+use core\domain\valueObject\UserIdentityId;
 use DateTimeImmutable;
-use modules\users\domain\exception\TelegramProfileStateViolation;
+use modules\users\domain\exception\TelegramProfileStateViolationException;
 use modules\users\domain\valueObject\TelegramBotStatus;
 use modules\users\domain\valueObject\TelegramIdentityProfileId;
 use modules\users\domain\valueObject\TelegramProfileSnapshot;
-use modules\users\domain\valueObject\UserIdentityId;
 
 final class TelegramIdentityProfile
 {
@@ -30,23 +30,23 @@ final class TelegramIdentityProfile
         }
 
         if ($lastSeenAt < $firstSeenAt) {
-            throw new TelegramProfileStateViolation('last_seen_before_first_seen');
+            throw new TelegramProfileStateViolationException('last_seen_before_first_seen');
         }
 
         if ($botStatus === TelegramBotStatus::BOT_BLOCKED) {
             if ($blockedAt === null) {
-                throw new TelegramProfileStateViolation('blocked_at_required');
+                throw new TelegramProfileStateViolationException('blocked_at_required');
             }
 
             if ($blockedAt < $lastSeenAt) {
-                throw new TelegramProfileStateViolation('blocked_at_before_last_seen');
+                throw new TelegramProfileStateViolationException('blocked_at_before_last_seen');
             }
         } elseif ($blockedAt !== null) {
-            throw new TelegramProfileStateViolation('blocked_at_not_allowed');
+            throw new TelegramProfileStateViolationException('blocked_at_not_allowed');
         }
 
         if ($botStatus === TelegramBotStatus::ANONYMIZED && !$profileSnapshot->isEmpty()) {
-            throw new TelegramProfileStateViolation('anonymized_snapshot_must_be_empty');
+            throw new TelegramProfileStateViolationException('anonymized_snapshot_must_be_empty');
         }
     }
 
@@ -101,11 +101,11 @@ final class TelegramIdentityProfile
         self::assertUtc($seenAt, 'seen_at');
 
         if ($this->botStatus === TelegramBotStatus::ANONYMIZED) {
-            throw new TelegramProfileStateViolation('interaction_after_anonymization');
+            throw new TelegramProfileStateViolationException('interaction_after_anonymization');
         }
 
         if ($seenAt < $this->lastSeenAt) {
-            throw new TelegramProfileStateViolation('seen_at_before_last_seen');
+            throw new TelegramProfileStateViolationException('seen_at_before_last_seen');
         }
 
         $this->profileSnapshot = $profileSnapshot;
@@ -123,11 +123,11 @@ final class TelegramIdentityProfile
         self::assertUtc($blockedAt, 'blocked_at');
 
         if ($this->botStatus === TelegramBotStatus::ANONYMIZED) {
-            throw new TelegramProfileStateViolation('block_after_anonymization');
+            throw new TelegramProfileStateViolationException('block_after_anonymization');
         }
 
         if ($blockedAt < $this->lastSeenAt) {
-            throw new TelegramProfileStateViolation('blocked_at_before_last_seen');
+            throw new TelegramProfileStateViolationException('blocked_at_before_last_seen');
         }
 
         $this->botStatus = TelegramBotStatus::BOT_BLOCKED;
@@ -145,37 +145,37 @@ final class TelegramIdentityProfile
         $this->blockedAt = null;
     }
 
-    public function id(): TelegramIdentityProfileId
+    public function getId(): TelegramIdentityProfileId
     {
         return $this->id;
     }
 
-    public function userIdentityId(): UserIdentityId
+    public function getUserIdentityId(): UserIdentityId
     {
         return $this->userIdentityId;
     }
 
-    public function profileSnapshot(): TelegramProfileSnapshot
+    public function getProfileSnapshot(): TelegramProfileSnapshot
     {
         return $this->profileSnapshot;
     }
 
-    public function botStatus(): TelegramBotStatus
+    public function getBotStatus(): TelegramBotStatus
     {
         return $this->botStatus;
     }
 
-    public function firstSeenAt(): DateTimeImmutable
+    public function getFirstSeenAt(): DateTimeImmutable
     {
         return $this->firstSeenAt;
     }
 
-    public function lastSeenAt(): DateTimeImmutable
+    public function getLastSeenAt(): DateTimeImmutable
     {
         return $this->lastSeenAt;
     }
 
-    public function blockedAt(): ?DateTimeImmutable
+    public function getBlockedAt(): ?DateTimeImmutable
     {
         return $this->blockedAt;
     }
@@ -183,7 +183,7 @@ final class TelegramIdentityProfile
     private static function assertUtc(DateTimeImmutable $time, string $field): void
     {
         if ($time->getTimezone()->getName() !== 'UTC') {
-            throw new TelegramProfileStateViolation($field . '_must_be_utc');
+            throw new TelegramProfileStateViolationException($field . '_must_be_utc');
         }
     }
 }

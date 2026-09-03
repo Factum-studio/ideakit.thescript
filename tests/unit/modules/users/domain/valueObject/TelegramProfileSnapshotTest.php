@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace tests\unit\modules\users\domain\valueObject;
 
 use Codeception\Test\Unit;
-use modules\users\domain\exception\InvalidTelegramProfileSnapshot;
+use modules\users\domain\exception\InvalidTelegramProfileSnapshotException;
 use modules\users\domain\valueObject\TelegramProfileSnapshot;
 
 final class TelegramProfileSnapshotTest extends Unit
@@ -58,7 +58,7 @@ final class TelegramProfileSnapshotTest extends Unit
         ?string $languageCode,
         string $reason,
     ): void {
-        $this->expectException(InvalidTelegramProfileSnapshot::class);
+        $this->expectException(InvalidTelegramProfileSnapshotException::class);
         $this->expectExceptionMessage($reason);
 
         TelegramProfileSnapshot::create($username, $firstName, $lastName, $languageCode);

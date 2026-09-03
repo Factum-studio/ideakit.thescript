@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace tests\unit\modules\users\domain\valueObject;
 
 use Codeception\Test\Unit;
-use modules\users\domain\exception\InvalidTelegramUserId;
+use modules\users\domain\exception\InvalidTelegramUserIdException;
 use modules\users\domain\valueObject\TelegramUserId;
 
 final class TelegramUserIdTest extends Unit
@@ -17,9 +17,8 @@ final class TelegramUserIdTest extends Unit
     {
         $telegramUserId = TelegramUserId::fromString($value);
 
-        self::assertSame($value, $telegramUserId->toString());
+        self::assertSame($value, $telegramUserId->value());
         self::assertTrue($telegramUserId->equals(TelegramUserId::fromString($value)));
-        self::assertSame($value, $telegramUserId->toProviderClientId()->toString());
     }
 
     /**
@@ -36,7 +35,7 @@ final class TelegramUserIdTest extends Unit
      */
     public function testRejectsNonCanonicalOrOutOfRangeValues(string $value, string $reason): void
     {
-        $this->expectException(InvalidTelegramUserId::class);
+        $this->expectException(InvalidTelegramUserIdException::class);
         $this->expectExceptionMessage($reason);
 
         TelegramUserId::fromString($value);
@@ -54,6 +53,7 @@ final class TelegramUserIdTest extends Unit
         yield 'leading zero' => ['01', 'non_canonical'];
         yield 'decimal notation' => ['1.0', 'non_canonical'];
         yield 'surrounding whitespace' => [' 1 ', 'non_canonical'];
+        yield 'trailing newline' => ["1\n", 'non_canonical'];
         yield 'non-decimal characters' => ['12a', 'non_canonical'];
         yield 'above PostgreSQL bigint maximum' => ['9223372036854775808', 'out_of_range'];
         yield 'more than 19 digits' => ['100000000000000000000', 'out_of_range'];
