@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace core\presentation\controller;
 
 use core\security\YiiIdentity;
+use Yii;
 use yii\rest\Controller;
 use core\domain\valueObject\IdRange;
 use core\application\dto\CollectionDto;
@@ -62,24 +63,28 @@ abstract class BaseController extends Controller
         }
     }
 
-    protected function getUserId(): ?int
+    /**
+     * Возвращает UUID текущего пользователя в виде строки или null, если не аутентифицирован.
+     */
+    protected function getUserId(): ?string
     {
-        return \Yii::$app->user->id ?? null;
+        $identity = Yii::$app->user->identity;
+        return $identity instanceof YiiIdentity ? $identity->getId() : null;
     }
 
     protected function getUserIdentity(): ?YiiIdentity
     {
-        return \Yii::$app->user->identity ?? null;
+        return Yii::$app->user->identity ?? null;
     }
 
     protected function getLimit(): int
     {
-        $limit = (int)\Yii::$app->request->get('limit', $this->defaultPageSize);
+        $limit = (int)Yii::$app->request->get('limit', $this->defaultPageSize);
         return max($this->pageSizeLimit[0], min($limit, $this->pageSizeLimit[1]));
     }
 
     protected function getPage(): int
     {
-        return max(1, (int)\Yii::$app->request->get('page', 1));
+        return max(1, (int)Yii::$app->request->get('page', 1));
     }
 }

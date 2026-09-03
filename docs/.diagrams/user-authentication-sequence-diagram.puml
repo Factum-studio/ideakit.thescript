@@ -1,0 +1,75 @@
+@startuml
+!theme plain
+autonumber
+actor Client
+participant "Yii beforeRequest" as Before
+participant JwtMiddleware as MW
+participant JwtManager as JWT
+participant IUserRepository as UR
+participant "Yii::$app->user" as YiiUser
+participant AuthenticateUseCase as Auth
+participant IUserIdentityRepository as IR
+participant CreateUserHandler as Create
+participant AddUserIdentityHandler as Add
+participant "PostgreSQL" as DB
+
+== Protected request ==
+Client -> Before: HTTP request
+Before -> MW: handle()
+MW -> JWT: validate(token)
+JWT -> JWT: decode HS256
+JWT --> MW: JwtPayloadDto / null
+alt invalid or expired
+  MW --> Client: 401
+else valid
+  MW -> UR: findById(payload.userId)
+  UR -> DB: SELECT user
+  DB --> UR: User row
+  UR --> MW: User / null
+  alt missing or inactive
+    MW --> Client: 401
+  else active
+    MW -> YiiUser: setIdentity(YiiIdentity(User))
+    Before --> Client: continue to controller
+  end
+end
+
+== Authentication ==
+Client -> Auth: execute(AuthRequestDto)
+Auth -> IR: findByProviderAndClientId(provider, clientId)
+IR -> DB: SELECT user_identity
+DB --> IR: identity / null
+alt identity exists
+  Auth -> UR: findById(identity.userId)
+  UR -> DB: SELECT user
+  DB --> UR: user
+  UR --> Auth: User
+else identity missing
+  Auth -> Create: handle(CreateUserCommand)
+  Create -> UR: findByEmail / findByPhone
+  UR -> DB: uniqueness lookups
+  DB --> UR: result
+  Create -> UR: save(User)
+  UR -> DB: INSERT user
+  DB --> UR: OK
+  UR --> Create: OK
+  Create --> Auth: User
+  Auth -> Add: handle(AddUserIdentityCommand)
+  Add -> IR: findByProviderAndClientId
+  IR -> DB: SELECT identity
+  DB --> IR: null
+  Add -> IR: save(UserIdentity)
+  IR -> DB: INSERT identity
+  DB --> IR: OK
+end
+Auth -> IR: findByProviderAndClientId(provider, clientId)
+IR --> Auth: identity / null
+opt identity missing
+  Auth -> Add: add identity
+end
+Auth -> UR: save(User after updateLastLogin)
+UR -> DB: UPDATE user
+Auth -> JWT: generate(User)
+JWT --> Auth: JWT
+Auth --> Client: AuthResponseDto
+@enduml

@@ -1,0 +1,54 @@
+@startuml
+!theme plain
+hide methods
+hide stereotypes
+
+entity "user" as user {
+  * id : uuid <<PK>>
+  --
+  surname : varchar(100)
+  name : varchar(100)
+  patronymic : varchar(100) nullable
+  email : varchar(255) nullable <<UQ>>
+  phone : varchar(20) nullable <<UQ>>
+  role : varchar(50)
+  post : varchar(100) nullable
+  status : smallint
+  auth_key : varchar(32)
+  created_at : timestamp
+  updated_at : timestamp
+  last_login_at : timestamp nullable
+}
+
+entity "user_identity" as identity {
+  * id : uuid <<PK>>
+  --
+  * user_id : uuid <<FK>>
+  provider : varchar(50)
+  provider_client_id : varchar(255)
+  created_at : timestamp
+  --
+  UK(provider, provider_client_id)
+}
+
+user ||--o{ identity : user_id
+
+note right of user
+Indexes:
+- email
+- phone
+- status
+- auth_key
+
+email and phone are unique.
+status: 1 active, 0 inactive.
+end note
+
+note right of identity
+Unique index:
+(provider, provider_client_id)
+
+FK delete/update:
+CASCADE
+end note
+@enduml

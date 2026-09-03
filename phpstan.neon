@@ -6,6 +6,7 @@ parameters:
         - modules
     bootstrapFiles:
         - phpstan-bootstrap.php
+        - config/__autocomplete.php
     ignoreErrors:
         - '#has no value type specified in iterable type array#'
         - '#Access to static property \$app on an unknown class Yii\.#'

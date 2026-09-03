@@ -1,0 +1,43 @@
+@startuml
+!theme plain
+autonumber
+actor Client
+participant "Yii Application" as Yii
+participant "ignore_routes.php" as Ignore
+participant JwtMiddleware as MW
+participant JwtManager as JWT
+participant IUserRepository as Repo
+participant YiiIdentity as Identity
+participant "Yii::$app->user" as YiiUser
+
+Client -> Yii: HTTP request
+Yii -> Ignore: check current path
+alt exact/prefix/regex ignored
+  Ignore --> Yii: ignore
+  Yii --> Client: controller response
+else protected route
+  Ignore --> Yii: authenticate
+  Yii -> MW: handle()
+  MW -> Client: read Authorization/cookie
+  alt no token
+    MW --> Client: 401 Token not found
+  else token found
+    MW -> JWT: validate(token)
+    alt invalid/expired
+      JWT --> MW: null
+      MW --> Client: 401 Invalid or expired token
+    else valid
+      JWT --> MW: JwtPayloadDto
+      MW -> Repo: findById(payload.userId)
+      Repo --> MW: User / null
+      alt missing/inactive
+        MW --> Client: 401 Account inactive/not found
+      else active
+        MW -> Identity: new YiiIdentity(User)
+        MW -> YiiUser: setIdentity(Identity)
+        Yii --> Client: continue request
+      end
+    end
+  end
+end
+@enduml
