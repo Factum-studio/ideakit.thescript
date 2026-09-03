@@ -108,6 +108,10 @@ final class TelegramIdentityProfile
             throw new TelegramProfileStateViolationException('seen_at_before_last_seen');
         }
 
+        if ($this->blockedAt !== null && $seenAt < $this->blockedAt) {
+            throw new TelegramProfileStateViolationException('seen_at_before_blocked_at');
+        }
+
         $this->profileSnapshot = $profileSnapshot;
         $this->botStatus = TelegramBotStatus::ACTIVE;
         $this->lastSeenAt = $seenAt;

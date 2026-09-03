@@ -296,6 +296,41 @@ final class TelegramIdentityProfileTest extends Unit
         ];
     }
 
+    public function testDelayedInteractionDoesNotUndoMoreRecentBlock(): void
+    {
+        $firstSeenAt = self::utc('2026-09-03 10:00:00');
+        $snapshot = self::snapshot('example_user');
+        $profile = TelegramIdentityProfile::create(
+            new TelegramIdentityProfileId(self::ID),
+            new UserIdentityId('550e8400-e29b-41d4-a716-446655440000'),
+            $snapshot,
+            $firstSeenAt,
+        );
+        $blockedAt = $firstSeenAt->modify('+2 minutes');
+        $profile->markBotBlocked($blockedAt);
+
+        try {
+            $profile->recordIncomingInteraction(
+                TelegramProfileSnapshot::empty(),
+                $firstSeenAt->modify('+1 minute'),
+            );
+            self::fail('A delayed interaction must not reactivate the profile.');
+        } catch (TelegramProfileStateViolationException $exception) {
+            self::assertSame('seen_at_before_blocked_at', $exception->getMessage());
+        }
+
+        self::assertSame(TelegramBotStatus::BOT_BLOCKED, $profile->getBotStatus());
+        self::assertSame($snapshot, $profile->getProfileSnapshot());
+        self::assertSame($firstSeenAt, $profile->getLastSeenAt());
+        self::assertSame($blockedAt, $profile->getBlockedAt());
+
+        $profile->recordIncomingInteraction($snapshot, $blockedAt);
+
+        self::assertSame(TelegramBotStatus::ACTIVE, $profile->getBotStatus());
+        self::assertSame($blockedAt, $profile->getLastSeenAt());
+        self::assertNull($profile->getBlockedAt());
+    }
+
     public function testMarksBotBlockedIdempotentlyAndPreservesInitialBlockedAt(): void
     {
         $snapshot = self::snapshot('username');
