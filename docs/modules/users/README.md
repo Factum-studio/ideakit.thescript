@@ -2,11 +2,13 @@
 
 ## Назначение и текущий статус
 
-Модуль `Users` владеет Telegram-специфичным профилем поверх существующего [User Core](../../core/user-circut/README.md). Сейчас в `Users` реализован только чистый Domain-срез `TelegramIdentityProfile` и его Value Objects.
+Модуль `Users` владеет Telegram-специфичным профилем поверх существующего [User Core](../../core/user-circut/README.md). Сейчас в `Users` реализованы чистый Domain-срез `TelegramIdentityProfile` и его PostgreSQL persistence.
 
 - `core` владеет `User`, единственной `UserIdentity`, общими идентификаторами и статусом пользователя `active/inactive`.
 - Контракты Core сохраняются: provider и provider client ID остаются строками без `null`, код Telegram-провайдера — `telegram`.
 - `TelegramIdentityProfile` — Telegram-специфичный snapshot профиля и состояние доступности бота.
+- Application предоставляет внутренний repository port с типизированным результатом, содержащим профиль и версию хранения.
+- Infrastructure содержит миграцию, ActiveRecord, mapper и PostgreSQL repository.
 
 Профиль ссылается на существующий `core\domain\valueObject\UserIdentityId`. Собственных `UserIdentity`, `UserId`, `UserIdentityId`, provider enum и общего provider client ID в `Users` нет.
 
@@ -44,29 +46,39 @@
 
 Ошибочные значения и переходы отклоняются узкими исключениями `InvalidTelegramUserIdException`, `InvalidTelegramProfileSnapshotException` и `TelegramProfileStateViolationException`. Некорректный ID профиля отклоняется через `InvalidArgumentException`. Сообщения исключений содержат только безопасные коды причин без Telegram ID и данных профиля.
 
-`seenAt` означает время получения доверенного входящего события приложением, а `blockedAt` — время наблюдения подтверждённой блокировки. При повторной обработке вызывающий слой должен сохранять исходное время события, а не подставлять текущее; Telegram `message.date` не служит универсальной меткой времени. Порядок операций с одинаковым временем и конкурентный доступ остаются ответственностью будущего Application/persistence-сценария.
+`seenAt` означает время получения доверенного входящего события приложением, а `blockedAt` — время наблюдения подтверждённой блокировки. При повторной обработке вызывающий слой должен сохранять исходное время события, а не подставлять текущее; Telegram `message.date` не служит универсальной меткой времени. Конкурентное сохранение защищено optimistic locking, а решение о повторной обработке и транзакционной границе остаётся ответственностью будущего Application-сценария.
 
 ## Владение и взаимодействие модулей
 
-`core` владеет `User`, `UserIdentity`, таблицами `user` и `user_identity`; `Users` владеет профилем и его будущим persistence в `telegram_identity_profiles`. Единственная production-зависимость Domain профиля от Core — `UserIdentityId`. Профиль не импортирует Core entities, repositories, ActiveRecord или JWT; обратной зависимости `core → Users` нет.
+`core` владеет `User`, `UserIdentity`, таблицами `user` и `user_identity`; `Users` владеет профилем и таблицей `telegram_identity_profiles`. Единственная production-зависимость Domain профиля от Core — `UserIdentityId`. Профиль не импортирует Core entities, repositories, ActiveRecord или JWT; обратной зависимости `core → Users` нет. Persistence Core не изменялся.
 
-Проверка существования identity, провайдера и общего доступа должна выполняться вне Domain профиля. Публичные типизированные Application-контракты для работы с профилем ещё не реализованы. Другие модули не должны обращаться к его будущим таблицам, repositories, mappers или внутренним Domain-классам напрямую. Telegram delivery отвечает за транспорт, updates и bot sessions, но не изменяет состояние `Users` в обход Application-контрактов.
+Проверка существования identity, провайдера и общего доступа должна выполняться вне Domain профиля. Внутренний persistence port не является публичным межмодульным API; Application commands, queries и handlers ещё не реализованы. Другие модули не должны обращаться к таблице, repository, mapper или внутренним Domain-классам напрямую. Telegram delivery отвечает за транспорт, updates и bot sessions, но не изменяет состояние `Users` в обход будущих публичных Application-контрактов.
+
+## Persistence
+
+- Таблица `telegram_identity_profiles` связана с `user_identity` один к одному; внешний ключ использует `ON DELETE RESTRICT` и `ON UPDATE RESTRICT`.
+- PostgreSQL constraints защищают допустимые статусы, временные инварианты, состояние обезличенного профиля и неотрицательные catalog checkpoints.
+- `ITelegramIdentityProfileRepository` поддерживает поиск по ID профиля и `UserIdentityId`, добавление и сохранение с ожидаемой версией.
+- `VersionedTelegramIdentityProfile` отделяет технический `lock_version` от Domain-сущности. Устаревшая версия возвращается как `TelegramIdentityProfileConcurrencyException`.
+- Mapper нормализует время в UTC. Обычное сохранение не меняет identity, время первого взаимодействия и зарезервированные `catalog_*` поля.
+- Repository не открывает скрытую транзакцию. Проверка `provider = telegram` и атомарное создание Core user, identity и Telegram-профиля относятся к следующему Application-срезу.
 
 ## Данные, зависимости и процессы
 
-- Persistence, ActiveRecord, repositories, mappers и миграции Telegram-профиля ещё не реализованы; существующая реализация Core не заменяется.
+- Persistence реализован на Yii ActiveRecord и PostgreSQL только внутри Infrastructure; существующая реализация Core не заменяется.
+- DI binding не добавлен, потому что Application use case — потребитель repository port — ещё не реализован.
 - Application commands, queries, handlers и публичные межмодульные контракты ещё не реализованы.
 - Telegram webhook и API client, Redis, RabbitMQ, outbox и workers в этот срез не входят.
 - У Domain-среза нет переменных окружения, runtime-конфигурации или внешних вызовов.
 - Модуль работает внутри PHP/Yii2-монолита; отдельный сервис и transport-контракты для извлечения не определены.
 
-Обезличивание всего аккаунта требует отдельно согласованных Core/schema-контрактов. Изменения схемы и общей модели идентичности в этот Domain-срез не входят.
+Обезличивание всего аккаунта требует отдельно согласованных Core/schema-контрактов. Изменения схемы Core и общей модели идентичности в этот срез не входят.
 
 ## Тесты и проверка
 
-Production-код находится в [`modules/users/domain`](../../../modules/users/domain), unit-тесты — в [`tests/unit/modules/users/domain`](../../../tests/unit/modules/users/domain).
+Production-код находится в [`modules/users`](../../../modules/users), unit-тесты — в [`tests/unit/modules/users`](../../../tests/unit/modules/users), PostgreSQL integration-тесты — в [`tests/integration`](../../../tests/integration).
 
-Для текущего Domain-среза существуют пять тестовых классов:
+Domain-поведение проверяют пять тестовых классов:
 
 - `TelegramIdentityProfileIdTest`;
 - `TelegramUserIdTest`;
@@ -74,16 +86,19 @@ Production-код находится в [`modules/users/domain`](../../../module
 - `TelegramIdentityCompatibilityTest`;
 - `TelegramIdentityProfileTest`.
 
+Application-тест проверяет versioned persistence result. Integration-набор проверяет безопасное подключение к `ideakit_test`, фактическую схему PostgreSQL, ограничения, round-trip mapper/repository, уникальность, `RESTRICT`, optimistic locking и сохранение `catalog_*` полей. Применение, откат и повторное применение миграции отдельно проверены на `ideakit_test`. Все данные тестов синтетические.
+
 Следующие команды были фактически проверены в контейнерном runtime:
 
 ```bash
 docker compose build php-fpm
-docker compose run --rm --no-deps php-fpm vendor/bin/codecept run unit tests/unit/modules/users/domain
-docker compose run --rm --no-deps php-fpm vendor/bin/php-cs-fixer fix --config=.php-cs-fixer.dist.php --dry-run --diff --using-cache=no --path-mode=override modules/users/domain tests/unit/modules/users/domain
-docker compose run --rm --no-deps php-fpm vendor/bin/phpstan analyse modules/users --level=6 --no-progress
-docker compose run --rm --no-deps php-fpm composer test:unit
-docker compose run --rm --no-deps php-fpm composer lint
-docker compose run --rm --no-deps php-fpm composer unclestan:6
+docker compose up -d --wait postgres php-fpm
+docker compose exec -T php-fpm vendor/bin/codecept run unit tests/unit/modules/users
+docker compose exec -T php-fpm vendor/bin/codecept run integration
+docker compose exec -T php-fpm composer lint
+docker compose exec -T php-fpm vendor/bin/phpstan analyse modules/users --level=6 --no-progress
+docker compose exec -T php-fpm composer unclestan:6
+docker compose exec -T php-fpm composer test
 ```
 
-Тест совместимости создаёт настоящую Core identity с UUIDv4 и проверяет, что блокировка и обезличивание профиля сохраняют её provider и provider client ID. Регрессионный тест проверяет, что запоздавшее входящее событие не меняет snapshot, статус и время профиля, а событие с временем блокировки допускает восстановление. Общий `composer test:unit` включает существующие тесты Core и проходит вместе с тестами Users.
+Тест совместимости создаёт настоящую Core identity с UUIDv4 и проверяет, что блокировка и обезличивание профиля сохраняют её provider и provider client ID. Регрессионный тест проверяет, что запоздавшее входящее событие не меняет snapshot, статус и время профиля, а событие с временем блокировки допускает восстановление. Общий `composer test` включает существующие тесты Core и проходит вместе с тестами Users и PostgreSQL integration-набором.
