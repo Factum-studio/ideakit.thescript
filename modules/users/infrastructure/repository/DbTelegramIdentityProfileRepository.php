@@ -76,7 +76,7 @@ final class DbTelegramIdentityProfileRepository implements ITelegramIdentityProf
         } catch (TelegramIdentityProfilePersistenceException $exception) {
             throw $exception;
         } catch (IntegrityException $exception) {
-            if ($this->isUniqueViolation($exception)) {
+            if ($this->isUserIdentityUniqueViolation($exception)) {
                 throw new TelegramIdentityProfileAlreadyExistsException(
                     'telegram_identity_profile_already_exists',
                     0,
@@ -195,8 +195,15 @@ final class DbTelegramIdentityProfileRepository implements ITelegramIdentityProf
         );
     }
 
-    private function isUniqueViolation(IntegrityException $exception): bool
+    private function isUserIdentityUniqueViolation(IntegrityException $exception): bool
     {
-        return ($exception->errorInfo[0] ?? null) === '23505';
+        if (($exception->errorInfo[0] ?? null) !== '23505') {
+            return false;
+        }
+
+        return str_contains(
+            (string) ($exception->errorInfo[2] ?? ''),
+            'constraint "uq_telegram_identity_profiles_user_identity_id"',
+        );
     }
 }
