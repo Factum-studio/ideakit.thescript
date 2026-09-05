@@ -154,6 +154,27 @@ class UserTest extends Unit
         $this->assertNull($user->getLastLoginAt());
     }
 
+    public function testCreatesCommonUserWithoutProfileNames(): void
+    {
+        $user = new User(
+            UserId::generate(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            new Role(Role::ROLE_USER),
+            null,
+            new UserStatus(UserStatus::STATUS_ACTIVE),
+            'authKey',
+            new DateTimeImmutable('2026-09-05 10:00:00+00:00'),
+            new DateTimeImmutable('2026-09-05 10:00:00+00:00'),
+        );
+
+        self::assertNull($user->getSurname());
+        self::assertNull($user->getName());
+    }
+
     public function testUpdateProfileSetsNullForEmailAndPhone()
     {
         $this->user->updateProfile(
