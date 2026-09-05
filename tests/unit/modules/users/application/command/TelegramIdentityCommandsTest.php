@@ -7,7 +7,9 @@ namespace tests\unit\modules\users\application\command;
 use Codeception\Test\Unit;
 use DateTimeImmutable;
 use DateTimeZone;
+use modules\users\application\command\MarkTelegramProfileBlockedCommand;
 use modules\users\application\command\ResolveTelegramIdentityCommand;
+use modules\users\application\enum\TelegramProfileBlockReason;
 use modules\users\application\exception\InvalidTelegramIdentityCommandException;
 
 final class TelegramIdentityCommandsTest extends Unit
@@ -90,6 +92,84 @@ final class TelegramIdentityCommandsTest extends Unit
             self::assertSame('invalid_correlation_id', $exception->getMessage());
             self::assertStringNotContainsString($invalidCorrelationId, $exception->getMessage());
         }
+    }
+
+    public function testBuildsTypedConfirmedBlockInput(): void
+    {
+        $blockedAt = self::utc('2026-09-05 13:00:00');
+
+        $command = new MarkTelegramProfileBlockedCommand(
+            '01890f4d-3c2a-7f48-8c0b-123456789ac1',
+            'BOT_BLOCKED_BY_USER',
+            $blockedAt,
+            self::CORRELATION_ID,
+        );
+
+        self::assertSame(
+            '01890f4d-3c2a-7f48-8c0b-123456789ac1',
+            $command->telegramIdentityProfileId->value(),
+        );
+        self::assertSame(TelegramProfileBlockReason::BOT_BLOCKED_BY_USER, $command->reason);
+        self::assertSame($blockedAt, $command->blockedAt);
+        self::assertSame(self::CORRELATION_ID, $command->correlationId);
+    }
+
+    /**
+     * @dataProvider invalidBlockCommands
+     */
+    public function testRejectsInvalidConfirmedBlockInput(
+        string $telegramIdentityProfileId,
+        string $reason,
+        DateTimeImmutable $blockedAt,
+        string $correlationId,
+        string $expectedReason,
+    ): void {
+        $this->expectException(InvalidTelegramIdentityCommandException::class);
+        $this->expectExceptionMessage($expectedReason);
+
+        new MarkTelegramProfileBlockedCommand(
+            $telegramIdentityProfileId,
+            $reason,
+            $blockedAt,
+            $correlationId,
+        );
+    }
+
+    /**
+     * @return iterable<string, array{string, string, DateTimeImmutable, string, string}>
+     */
+    public static function invalidBlockCommands(): iterable
+    {
+        $profileId = '01890f4d-3c2a-7f48-8c0b-123456789ac1';
+
+        yield 'invalid profile ID' => [
+            'invalid-profile-id',
+            'BOT_BLOCKED_BY_USER',
+            self::utc('2026-09-05 13:00:00'),
+            self::CORRELATION_ID,
+            'invalid_telegram_identity_profile_id',
+        ];
+        yield 'unknown reason' => [
+            $profileId,
+            'NETWORK_FAILURE',
+            self::utc('2026-09-05 13:00:00'),
+            self::CORRELATION_ID,
+            'invalid_telegram_profile_block_reason',
+        ];
+        yield 'non UTC time' => [
+            $profileId,
+            'BOT_BLOCKED_BY_USER',
+            new DateTimeImmutable('2026-09-05 18:00:00', new DateTimeZone('Asia/Yekaterinburg')),
+            self::CORRELATION_ID,
+            'blocked_at_must_be_utc',
+        ];
+        yield 'invalid correlation ID' => [
+            $profileId,
+            'BOT_BLOCKED_BY_USER',
+            self::utc('2026-09-05 13:00:00'),
+            'invalid-correlation-id',
+            'invalid_correlation_id',
+        ];
     }
 
     private static function utc(string $time): DateTimeImmutable
