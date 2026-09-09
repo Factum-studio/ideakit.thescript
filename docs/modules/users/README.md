@@ -2,13 +2,13 @@
 
 ## Назначение и текущий статус
 
-Модуль `Users` владеет Telegram-специфичным профилем поверх существующего [User Core](../../core/user-circut/README.md). Сейчас в `Users` реализованы чистый Domain-срез `TelegramIdentityProfile` и его PostgreSQL persistence.
+Модуль `Users` владеет Telegram-специфичным профилем поверх существующего [User Core](../../core/user-circut/README.md). Сейчас в `Users` реализованы Domain-модель `TelegramIdentityProfile`, PostgreSQL persistence и публичные Application-команды разрешения Telegram identity и фиксации подтверждённой блокировки бота.
 
 - `core` владеет `User`, единственной `UserIdentity`, общими идентификаторами и статусом пользователя `active/inactive`.
 - Контракты Core сохраняются: provider и provider client ID остаются строками без `null`, код Telegram-провайдера — `telegram`.
 - `TelegramIdentityProfile` — Telegram-специфичный snapshot профиля и состояние доступности бота.
-- Application предоставляет внутренний repository port с типизированным результатом, содержащим профиль и версию хранения.
-- Infrastructure содержит миграцию, ActiveRecord, mapper и PostgreSQL repository.
+- Application предоставляет публичные команды и handlers, а также внутренние порты identity resolver, repository, генератора ID и транзакции.
+- Infrastructure содержит миграцию, ActiveRecord, mapper, PostgreSQL repository, адаптер к публичному Core resolver и общую транзакционную границу.
 
 Профиль ссылается на существующий `core\domain\valueObject\UserIdentityId`. Собственных `UserIdentity`, `UserId`, `UserIdentityId`, provider enum и общего provider client ID в `Users` нет.
 
@@ -46,13 +46,24 @@
 
 Ошибочные значения и переходы отклоняются узкими исключениями `InvalidTelegramUserIdException`, `InvalidTelegramProfileSnapshotException` и `TelegramProfileStateViolationException`. Некорректный ID профиля отклоняется через `InvalidArgumentException`. Сообщения исключений содержат только безопасные коды причин без Telegram ID и данных профиля.
 
-`seenAt` означает время получения доверенного входящего события приложением, а `blockedAt` — время наблюдения подтверждённой блокировки. При повторной обработке вызывающий слой должен сохранять исходное время события, а не подставлять текущее; Telegram `message.date` не служит универсальной меткой времени. Конкурентное сохранение защищено optimistic locking, а решение о повторной обработке и транзакционной границе остаётся ответственностью будущего Application-сценария.
+`seenAt` означает время получения доверенного входящего события приложением, а `blockedAt` — время наблюдения подтверждённой блокировки. При повторной обработке вызывающий слой должен сохранять исходное время события, а не подставлять текущее; Telegram `message.date` не служит универсальной меткой времени. Application handlers повторно читают состояние при разрешённых конкурентных конфликтах, а сохранение защищено optimistic locking.
 
 ## Владение и взаимодействие модулей
 
 `core` владеет `User`, `UserIdentity`, таблицами `user` и `user_identity`; `Users` владеет профилем и таблицей `telegram_identity_profiles`. Единственная production-зависимость Domain профиля от Core — `UserIdentityId`. Профиль не импортирует Core entities, repositories, ActiveRecord или JWT; обратной зависимости `core → Users` нет. Persistence Core не изменялся.
 
-Проверка существования identity, провайдера и общего доступа должна выполняться вне Domain профиля. Внутренний persistence port не является публичным межмодульным API; Application commands, queries и handlers ещё не реализованы. Другие модули не должны обращаться к таблице, repository, mapper или внутренним Domain-классам напрямую. Telegram delivery отвечает за транспорт, updates и bot sessions, но не изменяет состояние `Users` в обход будущих публичных Application-контрактов.
+Проверка существования identity и общего статуса пользователя выполняется через consumer-owned порт `IUserIdentityResolver`. Его Infrastructure-адаптер `CoreUserIdentityResolver` вызывает публичный нейтральный `ResolveUserIdentityHandler` Core с provider `telegram`; Users не обращается к Core repositories, ActiveRecord или таблицам напрямую. Внутренний persistence port не является публичным межмодульным API. Telegram delivery должен вызывать публичные Application commands Users и не изменять профиль напрямую.
+
+## Публичные Application-команды
+
+| Команда и handler | Вход | Типизированный результат |
+|---|---|---|
+| `ResolveTelegramIdentityCommand` → `ResolveTelegramIdentityHandler` | Telegram user ID, nullable `username` / `firstName` / `lastName` / `languageCode`, доверенное `observedAt` в UTC, correlation ID | `ResolvedTelegramIdentity` с user/identity/profile IDs, статусами, correlation ID и outcome `CREATED`, `PROFILE_CREATED`, `UPDATED`, `UNCHANGED`, `USER_INACTIVE`, `PROFILE_ANONYMIZED` или `STALE_IGNORED` |
+| `MarkTelegramProfileBlockedCommand` → `MarkTelegramProfileBlockedHandler` | ID профиля, причина `BOT_BLOCKED_BY_USER`, доверенное `blockedAt` в UTC, correlation ID | `TelegramProfileBlockResult` со статусом, временем блокировки, correlation ID и outcome `BLOCKED`, `ALREADY_BLOCKED`, `PROFILE_ANONYMIZED` или `STALE_IGNORED` |
+
+Команда разрешения создаёт Core user/identity и профиль либо обновляет существующий профиль в одной PostgreSQL-транзакции. Неактивный Core user возвращает `USER_INACTIVE` без создания или изменения профиля. Обезличенный профиль не восстанавливается. Команда блокировки принимает только уже подтверждённую транспортным слоем причину и не классифицирует ответы Telegram API самостоятельно.
+
+`ResolveTelegramIdentityHandler` выполняет максимум три попытки только для `UserIdentityResolutionConcurrencyException`, конфликта уникальной связи профиля `TelegramIdentityProfileAlreadyExistsException` и optimistic-lock конфликта `TelegramIdentityProfileConcurrencyException`. После третьего конфликта возвращается `TelegramIdentityResolutionConcurrencyException`. `MarkTelegramProfileBlockedHandler` повторяет только optimistic-lock конфликт и после третьей попытки возвращает `TelegramProfileBlockConcurrencyException`. Ошибки целостности, обычные persistence-ошибки и некорректные команды не повторяются.
 
 ## Persistence
 
@@ -61,16 +72,15 @@
 - `ITelegramIdentityProfileRepository` поддерживает поиск по ID профиля и `UserIdentityId`, добавление и сохранение с ожидаемой версией.
 - `VersionedTelegramIdentityProfile` отделяет технический `lock_version` от Domain-сущности. Устаревшая версия возвращается как `TelegramIdentityProfileConcurrencyException`.
 - Mapper нормализует время в UTC. Обычное сохранение не меняет identity, время первого взаимодействия и зарезервированные `catalog_*` поля.
-- Repository не открывает скрытую транзакцию. Проверка `provider = telegram` и атомарное создание Core user, identity и Telegram-профиля относятся к следующему Application-срезу.
+- Repository не открывает скрытую транзакцию. `DbTransactionRunner` использует тот же singleton `ITransactionManager`, что и Core resolver, поэтому Core user, identity и Telegram-профиль фиксируются или откатываются вместе.
 
 ## Данные, зависимости и процессы
 
 - Persistence реализован на Yii ActiveRecord и PostgreSQL только внутри Infrastructure; существующая реализация Core не заменяется.
-- DI binding не добавлен, потому что Application use case — потребитель repository port — ещё не реализован.
-- Application commands, queries, handlers и публичные межмодульные контракты ещё не реализованы.
-- Telegram webhook и API client, Redis, RabbitMQ, outbox и workers в этот срез не входят.
+- Production DI связывает публичные handlers с Core resolver adapter, PostgreSQL repository, UUIDv7 generator и общей транзакцией; web, console и tests используют одну конфигурацию контейнера.
+- Telegram webhook, Telegram API client, delivery orchestration, Redis, RabbitMQ, outbox и workers в этот срез не входят.
 - У Domain-среза нет переменных окружения, runtime-конфигурации или внешних вызовов.
-- Модуль работает внутри PHP/Yii2-монолита; отдельный сервис и transport-контракты для извлечения не определены.
+- Модуль работает внутри PHP/Yii2-монолита. При будущем выделении в сервис `IUserIdentityResolver` заменяется API adapter, а публичные Application commands и typed results сохраняются как граница поведения.
 
 Обезличивание всего аккаунта требует отдельно согласованных Core/schema-контрактов. Изменения схемы Core и общей модели идентичности в этот срез не входят.
 
@@ -86,19 +96,23 @@ Domain-поведение проверяют пять тестовых клас�
 - `TelegramIdentityCompatibilityTest`;
 - `TelegramIdentityProfileTest`.
 
-Application-тест проверяет versioned persistence result. Integration-набор проверяет безопасное подключение к `ideakit_test`, фактическую схему PostgreSQL, ограничения, round-trip mapper/repository, уникальность, `RESTRICT`, optimistic locking и сохранение `catalog_*` полей. Применение, откат и повторное применение миграции отдельно проверены на `ideakit_test`. Все данные тестов синтетические.
+Unit-набор проверяет публичные команды, handlers, retry-классификацию и адаптер Core resolver. Integration-набор проверяет безопасное подключение к `ideakit_test`, фактическую схему PostgreSQL, ограничения, round-trip mapper/repository, уникальность, `RESTRICT`, optimistic locking, сохранение `catalog_*` полей, production DI и общую транзакцию Core/Users. Два отдельно запущенных PHP-процесса подтверждают, что конкурентное первое разрешение оставляет один согласованный набор user/identity/profile. Все данные тестов синтетические.
 
 Следующие команды были фактически проверены в контейнерном runtime:
 
 ```bash
 docker compose build php-fpm
 docker compose up -d --wait postgres php-fpm
+docker compose exec -T php-fpm php tests/bin/yii migrate/up --interactive=0
+docker compose exec -T php-fpm vendor/bin/codecept run unit tests/unit/application
+docker compose exec -T php-fpm vendor/bin/codecept run unit tests/unit/domain
 docker compose exec -T php-fpm vendor/bin/codecept run unit tests/unit/modules/users
 docker compose exec -T php-fpm vendor/bin/codecept run integration
+docker compose exec -T php-fpm php yii help
 docker compose exec -T php-fpm composer lint
-docker compose exec -T php-fpm vendor/bin/phpstan analyse modules/users --level=6 --no-progress
+docker compose exec -T php-fpm vendor/bin/phpstan analyse core modules/users --level=6 --no-progress
 docker compose exec -T php-fpm composer unclestan:6
 docker compose exec -T php-fpm composer test
 ```
 
-Тест совместимости создаёт настоящую Core identity с UUIDv4 и проверяет, что блокировка и обезличивание профиля сохраняют её provider и provider client ID. Регрессионный тест проверяет, что запоздавшее входящее событие не меняет snapshot, статус и время профиля, а событие с временем блокировки допускает восстановление. Общий `composer test` включает существующие тесты Core и проходит вместе с тестами Users и PostgreSQL integration-набором.
+Тест совместимости создаёт настоящую Core identity с UUIDv4 и проверяет, что блокировка и обезличивание профиля сохраняют её provider и provider client ID. Регрессионный тест проверяет, что запоздавшее входящее событие не меняет snapshot, статус и время профиля, а событие с временем блокировки допускает восстановление. Свежий общий `composer test` прошёл: 431 тест и 1942 проверки; PostgreSQL integration-набор — 40 тестов и 222 проверки.

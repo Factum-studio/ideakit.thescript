@@ -38,7 +38,12 @@ Infrastructure
 - `GetUserHandler` — получение пользователя с опциональным `identities`.
 - `FindUserHandler` — фильтрация и пагинация.
 - `GetUserByIdentityHandler` — поиск пользователя по provider + provider client id.
+- `ResolveUserIdentityHandler` — нейтральное разрешение существующей identity или атомарное создание обычного пользователя и identity.
 - `RegenerateAuthKeyHandler` — ротация `auth_key`.
+
+`ResolveUserIdentityHandler` принимает строковые `provider` и `providerClientId`, а также время в UTC. Для новой identity он создаёт только обычного активного пользователя с ролью `user`; `name` и `surname` такого пользователя могут быть `null`. Результат содержит идентификаторы пользователя и identity, общий статус пользователя и признак создания.
+
+Core не знает о Telegram-профиле и его статусах. Разрешение внешней identity не создаёт административную сессию и не предоставляет административный доступ.
 
 ### Domain
 
@@ -46,6 +51,8 @@ Infrastructure
 
 - `User`
 - `UserIdentity`
+
+`User` допускает отсутствие `name` и `surname`, когда общий аккаунт создаётся через канал, который хранит профильные данные в своём owning-модуле.
 
 Value Objects:
 
@@ -61,7 +68,7 @@ Value Objects:
 
 ### Infrastructure
 
-- PostgreSQL persistence: `UserAR`, `UserIdentityAR`, `DbUserRepository`, `DbUserIdentityRepository`.
+- PostgreSQL persistence: `UserAR`, `UserIdentityAR`, `DbUserRepository`, `DbUserIdentityRepository`, `DbTransactionManager`.
 - JWT: `JwtManager`, `JwtValidator`.
 - Security: `YiiSecurityService`.
 - Yii error handling: `JsonErrorHandler`.
@@ -79,9 +86,10 @@ Value Objects:
 
 - `IUserRepository → DbUserRepository`;
 - `IUserIdentityRepository → DbUserIdentityRepository`;
+- singleton `ITransactionManager → DbTransactionManager`;
 - `ISecurityService → YiiSecurityService`;
 - `JwtManager` и `JwtValidator`;
-- handlers;
+- handlers, включая `ResolveUserIdentityHandler`;
 - `AuthenticateUseCase`;
 - `JwtMiddleware`.
 
