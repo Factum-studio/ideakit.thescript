@@ -9,12 +9,16 @@ use core\domain\valueObject\UserIdentityId;
 use DateTimeImmutable;
 use DateTimeZone;
 use LogicException;
+use modules\users\application\command\MarkTelegramProfileBlockedCommand;
 use modules\users\application\command\ResolveTelegramIdentityCommand;
 use modules\users\application\dto\VersionedTelegramIdentityProfile;
 use modules\users\application\enum\TelegramIdentityResolutionOutcome;
+use modules\users\application\enum\TelegramProfileBlockOutcome;
+use modules\users\application\enum\TelegramProfileBlockReason;
 use modules\users\application\enum\UserAccountStatus;
 use modules\users\application\exception\TelegramIdentityProfileConcurrencyException;
 use modules\users\application\exception\TelegramIdentityProfilePersistenceException;
+use modules\users\application\handler\MarkTelegramProfileBlockedHandler;
 use modules\users\application\handler\ResolveTelegramIdentityHandler;
 use modules\users\application\port\ITelegramIdentityProfileIdGenerator;
 use modules\users\application\port\ITelegramIdentityProfileRepository;
@@ -43,6 +47,7 @@ final class TelegramIdentityApplicationTest extends Unit
     private const PARALLEL_ID = '1000000000000000306';
     private const PRIMARY_KEY_FIRST_ID = '1000000000000000307';
     private const PRIMARY_KEY_SECOND_ID = '1000000000000000308';
+    private const BLOCK_RESTORE_ID = '1000000000000000309';
 
     private const INACTIVE_USER_ID = '01890f4d-3c2a-7f48-8c0b-123456789b10';
     private const INACTIVE_IDENTITY_ID = '01890f4d-3c2a-7f48-8c0b-123456789b11';
@@ -267,6 +272,54 @@ final class TelegramIdentityApplicationTest extends Unit
         } catch (TelegramIdentityProfilePersistenceException $exception) {
             self::assertSame('telegram_identity_profile_persistence_failure', $exception->getMessage());
         }
+    }
+
+    public function testConfirmedBlockAndLaterIncomingInteractionRestoresProfile(): void
+    {
+        $resolved = $this->handler()->handle($this->command(
+            self::BLOCK_RESTORE_ID,
+            '2026-09-05 15:08:00',
+            '01890f4d-3c2a-7f48-8c0b-123456789c07',
+            'initial_username',
+        ));
+        $profileId = $resolved->telegramIdentityProfileId;
+        self::assertNotNull($profileId);
+
+        $blockedAt = self::utc('2026-09-05 15:09:00');
+        $blocked = Yii::$container->get(MarkTelegramProfileBlockedHandler::class)->handle(
+            new MarkTelegramProfileBlockedCommand(
+                $profileId,
+                TelegramProfileBlockReason::BOT_BLOCKED_BY_USER->value,
+                $blockedAt,
+                '01890f4d-3c2a-7f48-8c0b-123456789c08',
+            ),
+        );
+
+        self::assertSame(TelegramProfileBlockOutcome::BLOCKED, $blocked->outcome);
+        self::assertSame(TelegramBotStatus::BOT_BLOCKED, $blocked->telegramBotStatus);
+        self::assertEquals($blockedAt, $blocked->blockedAt);
+
+        $restored = $this->handler()->handle($this->command(
+            self::BLOCK_RESTORE_ID,
+            '2026-09-05 15:10:00',
+            '01890f4d-3c2a-7f48-8c0b-123456789c09',
+            'restored_username',
+        ));
+
+        self::assertSame(TelegramIdentityResolutionOutcome::UPDATED, $restored->outcome);
+        self::assertSame(TelegramBotStatus::ACTIVE, $restored->telegramBotStatus);
+        self::assertSame($profileId, $restored->telegramIdentityProfileId);
+
+        $repository = Yii::$container->get(ITelegramIdentityProfileRepository::class);
+        $persisted = $repository->findByUserIdentityId(new UserIdentityId($restored->userIdentityId));
+        self::assertNotNull($persisted);
+        self::assertSame(TelegramBotStatus::ACTIVE, $persisted->profile()->getBotStatus());
+        self::assertNull($persisted->profile()->getBlockedAt());
+        self::assertSame('restored_username', $persisted->profile()->getProfileSnapshot()->username());
+        self::assertSame(
+            ['users' => 1, 'identities' => 1, 'profiles' => 1],
+            $this->stateCounts(self::BLOCK_RESTORE_ID),
+        );
     }
 
     private function handler(): ResolveTelegramIdentityHandler
@@ -528,6 +581,7 @@ PHP;
             self::PARALLEL_ID,
             self::PRIMARY_KEY_FIRST_ID,
             self::PRIMARY_KEY_SECOND_ID,
+            self::BLOCK_RESTORE_ID,
         ];
     }
 
