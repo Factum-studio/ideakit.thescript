@@ -48,11 +48,10 @@ class DbUserRepository implements IUserRepository
         $ar->last_login_at  = $user->getLastLoginAt()?->format('Y-m-d H:i:s');
 
         if (!$ar->save()) {
-            $errorMessages = [];
-            foreach ($ar->getErrors() as $field => $messages) {
-                $errorMessages[] = "$field: " . implode(', ', $messages);
-            }
-            throw new RuntimeException('Failed to save user: ' . implode('; ', $errorMessages));
+            $invalidFields = array_keys($ar->getErrors());
+            throw new RuntimeException(
+                'user_persistence_validation_failed: ' . implode(', ', $invalidFields),
+            );
         }
     }
 
@@ -204,8 +203,8 @@ class DbUserRepository implements IUserRepository
     {
         return new User(
             new UserId($row['id']),
-            $row['surname'],
-            $row['name'],
+            isset($row['surname']) ? (string) $row['surname'] : null,
+            isset($row['name']) ? (string) $row['name'] : null,
             $row['patronymic'] ?? null,
             $row['email'] ? new Email($row['email']) : null,
             $row['phone'] ? new Phone($row['phone']) : null,

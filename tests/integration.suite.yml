@@ -1,0 +1,7 @@
+actor: IntegrationTester
+modules:
+    enabled:
+        - Asserts
+        - Yii2:
+              part: [orm, fixtures]
+              transaction: false
