@@ -14,6 +14,7 @@ use core\infrastructure\persistence\UserIdentityAR;
 use DateTimeImmutable;
 use Throwable;
 use yii\db\IntegrityException;
+use yii\validators\UniqueValidator;
 
 class DbUserIdentityRepository implements IUserIdentityRepository
 {
@@ -30,6 +31,7 @@ class DbUserIdentityRepository implements IUserIdentityRepository
             $ar->provider_client_id = $identity->getProviderClientId();
             $ar->created_at = $identity->getCreatedAt()->format('Y-m-d H:i:s');
 
+            $this->deferProviderClientUniquenessToDatabase($ar);
             if (!$ar->save()) {
                 throw $this->validationFailure($ar);
             }
@@ -139,6 +141,21 @@ class DbUserIdentityRepository implements IUserIdentityRepository
         return new UserIdentityResolutionPersistenceException(
             'user_identity_validation_failed:' . implode(',', $fields),
         );
+    }
+
+    private function deferProviderClientUniquenessToDatabase(UserIdentityAR $record): void
+    {
+        $validators = $record->getValidators();
+
+        foreach ($validators as $index => $validator) {
+            if (
+                $validator instanceof UniqueValidator
+                && $validator->attributes === ['provider', 'provider_client_id']
+                && $validator->targetAttribute === ['provider', 'provider_client_id']
+            ) {
+                unset($validators[$index]);
+            }
+        }
     }
 
     private function isProviderClientUniqueViolation(IntegrityException $exception): bool
