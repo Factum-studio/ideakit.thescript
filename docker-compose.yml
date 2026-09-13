@@ -24,6 +24,9 @@ services:
       DB_DSN: pgsql:host=postgres;port=5432;dbname=${POSTGRES_DB:-ideakit}
       DB_USERNAME: ${POSTGRES_USER:-ideakit}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-local-development-only}
+      TEST_DB_DSN: pgsql:host=postgres;port=5432;dbname=ideakit_test
+      TEST_DB_USERNAME: ${POSTGRES_USER:-ideakit}
+      TEST_DB_PASSWORD: ${POSTGRES_PASSWORD:-local-development-only}
     depends_on:
       postgres:
         condition: service_healthy

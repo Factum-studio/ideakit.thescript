@@ -14,8 +14,8 @@ use DateTimeImmutable;
 class User
 {
     private UserId $id;
-    private string $surname;
-    private string $name;
+    private ?string $surname;
+    private ?string $name;
     private ?string $patronymic;
     private ?Email $email;
     private ?Phone $phone;
@@ -34,8 +34,8 @@ class User
 
     public function __construct(
         UserId $id,
-        string $surname,
-        string $name,
+        ?string $surname,
+        ?string $name,
         ?string $patronymic,
         ?Email $email,
         ?Phone $phone,
@@ -67,11 +67,11 @@ class User
     {
         return $this->id;
     }
-    public function getSurname(): string
+    public function getSurname(): ?string
     {
         return $this->surname;
     }
-    public function getName(): string
+    public function getName(): ?string
     {
         return $this->name;
     }
@@ -125,7 +125,7 @@ class User
     }
 
     // Сеттеры
-    public function updateProfile(string $surname, string $name, ?string $patronymic, ?Email $email, ?Phone $phone, ?string $post): void
+    public function updateProfile(?string $surname, ?string $name, ?string $patronymic, ?Email $email, ?Phone $phone, ?string $post): void
     {
         $this->surname  = $surname;
         $this->name     = $name;

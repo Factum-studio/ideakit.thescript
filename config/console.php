@@ -5,6 +5,7 @@ declare(strict_types=1);
 $params                 = require __DIR__ . '/params.php';
 $db                     = require __DIR__ . '/db.php';
 $migrationNamespaces    = require __DIR__ . '/migration_namespaces.php';
+$container              = __DIR__ . '/container.php';
 
 $config = [
     'id' => $_ENV['APP_NAME'].'-console',
@@ -44,6 +45,8 @@ $config = [
         ],
     ],
 ];
+
+require $container;
 
 if (YII_ENV_DEV) {
     $config['bootstrap'][] = 'gii';

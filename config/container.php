@@ -12,18 +12,33 @@ use core\application\handler\FindUserHandler;
 use core\application\handler\GetUserByIdentityHandler;
 use core\application\handler\GetUserHandler;
 use core\application\handler\RegenerateAuthKeyHandler;
+use core\application\handler\ResolveUserIdentityHandler;
 use core\application\handler\UpdateUserHandler;
 use core\application\port\IJwtManager;
 use core\application\port\ISecurityService;
+use core\application\port\ITransactionManager;
 use core\application\port\IUserIdentityRepository;
 use core\application\port\IUserRepository;
 use core\application\useCase\AuthenticateUseCase;
+use core\infrastructure\db\DbTransactionManager;
 use core\infrastructure\jwt\JwtManager;
 use core\infrastructure\jwt\JwtValidator;
 use core\infrastructure\repository\DbUserIdentityRepository;
 use core\infrastructure\repository\DbUserRepository;
 use core\infrastructure\security\YiiSecurityService;
 use core\security\JwtMiddleware;
+use modules\users\application\handler\MarkTelegramProfileBlockedHandler;
+use modules\users\application\handler\ResolveTelegramIdentityHandler;
+use modules\users\application\port\ITelegramIdentityProfileIdGenerator;
+use modules\users\application\port\ITelegramIdentityProfileRepository;
+use modules\users\application\port\ITransactionRunner;
+use modules\users\application\port\IUserIdentityResolver;
+use modules\users\infrastructure\core\CoreUserIdentityResolver;
+use modules\users\infrastructure\db\DbTransactionRunner;
+use modules\users\infrastructure\identity\RamseyTelegramIdentityProfileIdGenerator;
+use modules\users\infrastructure\mapper\TelegramIdentityProfileMapper;
+use modules\users\infrastructure\repository\DbTelegramIdentityProfileRepository;
+use yii\db\Connection;
 
 $container = Yii::$container;
 
@@ -34,6 +49,28 @@ $container->setSingleton(IUserRepository::class, function () {
 
 $container->setSingleton(IUserIdentityRepository::class, function () {
     return new DbUserIdentityRepository();
+});
+
+$container->setSingleton(ITelegramIdentityProfileRepository::class, function () {
+    return new DbTelegramIdentityProfileRepository(
+        new TelegramIdentityProfileMapper(),
+    );
+});
+
+// ---------- Transactions ----------
+$container->setSingleton(ITransactionManager::class, function () {
+    $db = Yii::$app->get('db');
+    if (!$db instanceof Connection) {
+        throw new RuntimeException('Application database connection is not configured.');
+    }
+
+    return new DbTransactionManager($db);
+});
+
+$container->setSingleton(ITransactionRunner::class, function () use ($container) {
+    return new DbTransactionRunner(
+        $container->get(ITransactionManager::class),
+    );
 });
 
 // ---------- JWT ----------
@@ -60,6 +97,17 @@ $container->setSingleton(JwtValidator::class, function () use ($container) {
 // ---------- Security ----------
 $container->setSingleton(ISecurityService::class, function () {
     return new YiiSecurityService();
+});
+
+// ---------- Users module adapters ----------
+$container->setSingleton(IUserIdentityResolver::class, function () use ($container) {
+    return new CoreUserIdentityResolver(
+        $container->get(ResolveUserIdentityHandler::class),
+    );
+});
+
+$container->setSingleton(ITelegramIdentityProfileIdGenerator::class, function () {
+    return new RamseyTelegramIdentityProfileIdGenerator();
 });
 
 // ---------- UseCase ----------
@@ -143,6 +191,31 @@ $container->set(RegenerateAuthKeyHandler::class, function () use ($container) {
     return new RegenerateAuthKeyHandler(
         $container->get(IUserRepository::class),
         $container->get(ISecurityService::class),
+    );
+});
+
+$container->set(ResolveUserIdentityHandler::class, function () use ($container) {
+    return new ResolveUserIdentityHandler(
+        $container->get(IUserIdentityRepository::class),
+        $container->get(IUserRepository::class),
+        $container->get(ISecurityService::class),
+        $container->get(ITransactionManager::class),
+    );
+});
+
+$container->set(ResolveTelegramIdentityHandler::class, function () use ($container) {
+    return new ResolveTelegramIdentityHandler(
+        $container->get(IUserIdentityResolver::class),
+        $container->get(ITelegramIdentityProfileRepository::class),
+        $container->get(ITelegramIdentityProfileIdGenerator::class),
+        $container->get(ITransactionRunner::class),
+    );
+});
+
+$container->set(MarkTelegramProfileBlockedHandler::class, function () use ($container) {
+    return new MarkTelegramProfileBlockedHandler(
+        $container->get(ITelegramIdentityProfileRepository::class),
+        $container->get(ITransactionRunner::class),
     );
 });
 

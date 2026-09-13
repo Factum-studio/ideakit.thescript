@@ -8,8 +8,8 @@ use yii\db\ActiveRecord;
 
 /**
  * @property string $id
- * @property string $surname
- * @property string $name
+ * @property string|null $surname
+ * @property string|null $name
  * @property string|null $patronymic
  * @property string|null $email
  * @property string|null $phone
@@ -31,7 +31,7 @@ class UserAR extends ActiveRecord
     public function rules(): array
     {
         return [
-            [['id', 'surname', 'name', 'auth_key'], 'required'],
+            [['id', 'auth_key'], 'required'],
             [['surname', 'name', 'patronymic'], 'string', 'max' => 100],
             ['email', 'email'],
             ['email', 'unique'],
