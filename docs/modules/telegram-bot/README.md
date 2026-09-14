@@ -66,13 +66,16 @@ docker compose exec -T -e APP_ENV=test -e APP_DEBUG=false -e 'DB_DSN=pgsql:host=
 
 ## Проверки
 
-[Schema integration-тест сессий](../../../tests/integration/modules/telegram/infrastructure/TelegramBotSessionSchemaTest.php)
-и [schema integration-тест inbox](../../../tests/integration/modules/telegram/infrastructure/TelegramUpdateSchemaTest.php)
-проверяют колонки, defaults, FK, уникальность, CHECK и индексы на PostgreSQL.
+[Schema integration-тест сессий](../../../tests/integration/modules/telegram/infrastructure/TelegramBotSessionSchemaTest.php),
+[schema integration-тест inbox](../../../tests/integration/modules/telegram/infrastructure/TelegramUpdateSchemaTest.php)
+и [lifecycle-тест migrations](../../../tests/integration/modules/telegram/infrastructure/TelegramMigrationsLifecycleTest.php)
+проверяют колонки, defaults, FK, уникальность, `CHECK`, индексы, регистрацию namespace и безопасный цикл
+отката с повторным применением на PostgreSQL.
 
 ```bash
 docker compose exec -T -e APP_ENV=test -e APP_DEBUG=false -e 'TEST_DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' php-fpm vendor/bin/codecept run integration tests/integration/modules/telegram/infrastructure/TelegramBotSessionSchemaTest.php
 docker compose exec -T -e APP_ENV=test -e APP_DEBUG=false -e 'TEST_DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' php-fpm vendor/bin/codecept run integration tests/integration/modules/telegram/infrastructure/TelegramUpdateSchemaTest.php
+docker compose exec -T -e APP_ENV=test -e APP_DEBUG=false -e 'TEST_DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' php-fpm vendor/bin/codecept run integration tests/integration/modules/telegram/infrastructure/TelegramMigrationsLifecycleTest.php
 docker compose exec -T php-fpm composer lint
 docker compose exec -T php-fpm composer unclestan:6
 docker compose exec -T -e APP_ENV=test -e APP_DEBUG=false -e 'TEST_DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' php-fpm composer test
@@ -84,6 +87,7 @@ docker compose exec -T -e APP_ENV=test -e APP_DEBUG=false -e 'TEST_DB_DSN=pgsql:
 ```bash
 docker compose exec -T php-fpm vendor/bin/php-cs-fixer fix --dry-run --diff --path-mode=override tests/integration/modules/telegram/infrastructure/TelegramBotSessionSchemaTest.php
 docker compose exec -T php-fpm vendor/bin/php-cs-fixer fix --dry-run --diff --path-mode=override tests/integration/modules/telegram/infrastructure/TelegramUpdateSchemaTest.php
+docker compose exec -T php-fpm vendor/bin/php-cs-fixer fix --dry-run --diff --path-mode=override tests/integration/modules/telegram/infrastructure/TelegramMigrationsLifecycleTest.php
 ```
 
 ## Граница выделения модуля
