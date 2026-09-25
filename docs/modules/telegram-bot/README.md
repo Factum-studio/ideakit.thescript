@@ -16,8 +16,26 @@
 Для события с достоверным `update_id`, которое нельзя обработать, он возвращает `IgnoredUpdate`;
 для некорректного JSON или недостоверного `update_id` — безопасную ошибку до записи в inbox.
 У проигнорированного callback сохраняется только ID запроса для будущего подтверждения, не его `data`.
-Данные callback остаются непроверенными; webhook, проверка подписи, обработчики сессий и исходящее
-подтверждение callback пока не реализованы.
+Данные callback в результате parser остаются непроверенными. Отдельный codec ниже может проверить
+их подпись, но parser сам его не вызывает. Webhook, обработчики сессий и исходящее подтверждение
+callback пока не реализованы.
+
+## Подписанные callback
+
+Инфраструктурный codec создаёт и проверяет callback версии `1` в формате
+`version.action.subject.signature` (не более 64 байт). Действия `d/o/p` содержат UUID карточки
+в каноническом Base64URL, `c/x` — неотрицательную ревизию в строчной base36. Подпись HMAC-SHA256
+привязана к доверенным `bot_key` и UUID Telegram-профиля. Codec отвергает неизвестные и
+неканонические значения безопасной ошибкой, не раскрывающей входные данные.
+
+Ключи передаются codec в каноническом стандартном Base64: текущий ключ подписывает и проверяет,
+необязательный предыдущий только проверяет. Каждый ключ после декодирования должен содержать не
+менее 32 байт; значения ключей не хранятся в коде модуля. В версии `1` нет срока действия:
+после удаления предыдущего ключа старые кнопки становятся недействительными.
+
+Проверенная подпись подтверждает только целостность кнопки, но не право выполнить действие.
+Получение доверенного профиля, подключение codec к конфигурации приложения, проверки сессии и
+бизнес-доступа, webhook и ответ на callback остаются для следующих срезов.
 
 ## Владение данными
 
@@ -79,10 +97,11 @@ docker compose exec -T -e APP_ENV=test -e APP_DEBUG=false -e 'DB_DSN=pgsql:host=
 
 ## Проверки
 
-Unit-тесты транспортных моделей и parser:
+Unit-тесты транспортных моделей, parser и callback codec:
 
 ```bash
 docker compose exec -T php-fpm vendor/bin/codecept run unit tests/unit/modules/telegram/infrastructure/transport/update --no-colors
+docker compose exec -T php-fpm vendor/bin/codecept run unit tests/unit/modules/telegram/infrastructure/transport/callback/TelegramCallbackCodecTest.php --no-colors
 ```
 
 [Schema integration-тест сессий](../../../tests/integration/modules/telegram/infrastructure/TelegramBotSessionSchemaTest.php),
