@@ -3,16 +3,21 @@
 ## Реализованная часть
 
 Подготовлены PostgreSQL-таблицы `telegram_bot_sessions` для состояния диалога и `telegram_updates`
-для надёжного приёма входящих обновлений. Webhook, разбор обновлений, управление диалогом и отправка
-сообщений в этом срезе не реализованы.
+для надёжного приёма входящих обновлений. Webhook, управление диалогом и отправка сообщений
+не реализованы.
 
 ## Транспортные модели
 
 В Infrastructure добавлены неизменяемые типы `MessageUpdate`, `CallbackQueryUpdate`,
 `MyChatMemberUpdate` и `IgnoredUpdate`. Они раздельно сохраняют ID отправителя, чата и участника
 события изменения статуса бота. `IgnoredUpdate` сохраняет исходный вид обновления и безопасную причину
-игнорирования. Данные callback остаются непроверенной строкой; JSON parser, проверка HMAC, webhook
-и обработчики пока не реализованы.
+игнорирования. Инфраструктурный parser ограничивает размер и глубину JSON, строго проверяет необходимые
+поля и преобразует личные `message`, `callback_query` и `my_chat_member` в эти модели.
+Для события с достоверным `update_id`, которое нельзя обработать, он возвращает `IgnoredUpdate`;
+для некорректного JSON или недостоверного `update_id` — безопасную ошибку до записи в inbox.
+У проигнорированного callback сохраняется только ID запроса для будущего подтверждения, не его `data`.
+Данные callback остаются непроверенными; webhook, проверка подписи, обработчики сессий и исходящее
+подтверждение callback пока не реализованы.
 
 ## Владение данными
 
@@ -73,6 +78,12 @@ docker compose exec -T -e APP_ENV=test -e APP_DEBUG=false -e 'DB_DSN=pgsql:host=
 не используйте `fresh` или общий откат для рабочей базы.
 
 ## Проверки
+
+Unit-тесты транспортных моделей и parser:
+
+```bash
+docker compose exec -T php-fpm vendor/bin/codecept run unit tests/unit/modules/telegram/infrastructure/transport/update --no-colors
+```
 
 [Schema integration-тест сессий](../../../tests/integration/modules/telegram/infrastructure/TelegramBotSessionSchemaTest.php),
 [schema integration-тест inbox](../../../tests/integration/modules/telegram/infrastructure/TelegramUpdateSchemaTest.php)

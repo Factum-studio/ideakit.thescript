@@ -93,7 +93,29 @@ final class TelegramUpdateModelsTest extends Unit
         self::assertSame(IgnoredUpdateReason::NON_PRIVATE_CHAT, $groupMessage->reason);
         self::assertSame(TelegramUpdateType::UNSUPPORTED, $unknown->type());
         self::assertSame(15, $unknown->updateId());
-        self::assertSame(['sourceType', 'reason'], array_keys(get_object_vars($groupMessage)));
+        self::assertSame(['sourceType', 'reason', 'callbackQueryId'], array_keys(get_object_vars($groupMessage)));
+        self::assertNull($groupMessage->callbackQueryId);
+    }
+
+    public function testIgnoredCallbackRetainsOnlyOpaqueQueryId(): void
+    {
+        $ignored = new IgnoredUpdate(
+            16,
+            TelegramUpdateType::CALLBACK_QUERY,
+            IgnoredUpdateReason::UNSUPPORTED_CALLBACK_CONTEXT,
+            'query-16',
+        );
+
+        self::assertSame('query-16', $ignored->callbackQueryId);
+        self::assertSame(['sourceType', 'reason', 'callbackQueryId'], array_keys(get_object_vars($ignored)));
+    }
+
+    public function testOnlyCallbackCanRetainQueryId(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('invalid_callback_query_source');
+
+        new IgnoredUpdate(16, TelegramUpdateType::MESSAGE, IgnoredUpdateReason::INVALID_STRUCTURE, 'query-16');
     }
 
     public function testClosedVocabulariesMatchTransportContracts(): void
@@ -116,6 +138,7 @@ final class TelegramUpdateModelsTest extends Unit
                 'UNSUPPORTED_CONTENT',
                 'UNSUPPORTED_CALLBACK_CONTEXT',
                 'INVALID_STRUCTURE',
+                'UNSUPPORTED_ACTOR',
             ],
             array_map(
                 static fn (IgnoredUpdateReason $reason): string => $reason->value,
