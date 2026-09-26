@@ -8,15 +8,15 @@
 
 PostgreSQL проверяет допустимые назначения и состояния, уникальность ключа идемпотентности, согласованность lease и времени повтора, структуру технической истории попыток, ограничения payload и срока его очистки. Частичный уникальный индекс допускает не более одной активной `IDEA_CARD` на получателя. Историю переходов и факт ручного разрешения ошибки таблица сама не устанавливает.
 
-## Подготовленный контракт записи
+## Запись в PostgreSQL
 
 [`IOutboxWriter`](../../../modules/platform/application/port/IOutboxWriter.php) принимает неизменяемый `OutboxWriteIntent` и возвращает `OutboxWriteReceipt` с исходом `CREATED` или `ALREADY_EXISTS`. Сейчас разрешён только маршрут `Telegram` / `telegram.update.received` / `1.0` / `TELEGRAM_UPDATE` → `RABBITMQ` / `critical`; payload содержит только внутренний UUID записи update. Неверный вход и неизвестный маршрут отклоняются безопасными кодами ошибок.
 
-PostgreSQL-реализация writer и её подключение к приложению ещё не выполнены: пользоваться этим интерфейсом для записи пока нельзя. RabbitMQ topology, relay, worker, восстановление lease, очистка payload и Telegram webhook также не реализованы. Миграция не отправляет сообщения и не обращается к внешним системам.
+[`DbOutboxWriter`](../../../modules/platform/infrastructure/db/DbOutboxWriter.php) записывает сообщение только внутри уже открытой транзакции вызывающего сценария на том же соединении PostgreSQL. Он возвращает существующий ID для совпадающего повтора и отклоняет другой эффект с тем же ключом. Адаптер пока не подключён к контейнеру приложения; вызывающий сценарий не может получить его через публичный интерфейс. RabbitMQ topology, relay, worker, восстановление lease, очистка payload и Telegram webhook также не реализованы. Запись не отправляет сообщения и не обращается к внешним системам.
 
 ## Проверка
 
-Структура, ограничения и индексы проверяются [schema-тестом](../../../tests/integration/modules/platform/infrastructure/OutboxMessageSchemaTest.php). [Lifecycle-тест](../../../tests/integration/modules/platform/infrastructure/OutboxMigrationLifecycleTest.php) вызывает откат и повторное применение внутри откатываемой PostgreSQL-транзакции и сравнивает схемы родительских таблиц и Yii migration history.
+Структура, ограничения и индексы проверяются [schema-тестом](../../../tests/integration/modules/platform/infrastructure/OutboxMessageSchemaTest.php). [Lifecycle-тест](../../../tests/integration/modules/platform/infrastructure/OutboxMigrationLifecycleTest.php) вызывает откат и повторное применение внутри откатываемой PostgreSQL-транзакции и сравнивает схемы родительских таблиц и Yii migration history. [Тест writer](../../../tests/integration/modules/platform/infrastructure/DbOutboxWriterTest.php) проверяет запись, общий commit/rollback, повторы и конкурентный конфликт в тестовой PostgreSQL.
 
 В запущенном локальном Compose-окружении с подготовленной тестовой БД проверки выполняются так:
 
