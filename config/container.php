@@ -27,6 +27,9 @@ use core\infrastructure\repository\DbUserIdentityRepository;
 use core\infrastructure\repository\DbUserRepository;
 use core\infrastructure\security\YiiSecurityService;
 use core\security\JwtMiddleware;
+use modules\platform\application\port\IOutboxWriter;
+use modules\platform\application\route\OutboxRouteRegistry;
+use modules\platform\infrastructure\db\DbOutboxWriter;
 use modules\users\application\handler\MarkTelegramProfileBlockedHandler;
 use modules\users\application\handler\ResolveTelegramIdentityHandler;
 use modules\users\application\port\ITelegramIdentityProfileIdGenerator;
@@ -108,6 +111,16 @@ $container->setSingleton(IUserIdentityResolver::class, function () use ($contain
 
 $container->setSingleton(ITelegramIdentityProfileIdGenerator::class, function () {
     return new RamseyTelegramIdentityProfileIdGenerator();
+});
+
+// ---------- Platform outbox ----------
+$container->setSingleton(IOutboxWriter::class, function () {
+    $db = Yii::$app->get('db');
+    if (!$db instanceof Connection) {
+        throw new RuntimeException('Application database connection is not configured.');
+    }
+
+    return new DbOutboxWriter($db, new OutboxRouteRegistry());
 });
 
 // ---------- UseCase ----------
