@@ -35,14 +35,27 @@ DLX-настройки не входят в аргументы AMQP-деклар
 | `RABBITMQ_CONFIRM_TIMEOUT` | 5 s | > 0, ≤ 30 s |
 | `RABBITMQ_CONSUMER_POLL_TIMEOUT` | 1 s | > 0, ≤ 30 s |
 
-Compose передаёт PHP host `rabbitmq` и внутренний порт 5672. Для native-запуска [.env.example](../../../.env.example) использует `127.0.0.1` и опубликованный порт; реальный `.env` не требуется контейнерам. Топология, publisher и receiver пока не подключены к DI; console-команда ещё не реализована. Обычный bootstrap не объявляет топологию и не публикует сообщения.
+Compose передаёт PHP host `rabbitmq` и внутренний порт 5672. Для native-запуска [.env.example](../../../.env.example) использует `127.0.0.1` и опубликованный порт; реальный `.env` не требуется контейнерам. Общая [DI-конфигурация](../../../config/container.php) лениво подключает topology, publisher и receiver для web и console. Bootstrap и получение адаптера из контейнера не открывают соединение. Отсутствующая конфигурация даёт безопасный `configuration_invalid` только при запросе транспортной зависимости. Каждый запрос `IBrokerReceiver` создаёт новый экземпляр; его владелец закрывает receiver в `finally`.
 
-Policy применяется отдельно в запущенном локальном брокере:
+[`DeclareMessagingTopologyHandler`](../../../modules/platform/application/handler/DeclareMessagingTopologyHandler.php) вызывает только `IBrokerTopology`. Тонкий [console controller](../../../modules/platform/presentation/console/MessagingController.php) предоставляет `platform-messaging/declare`: успех возвращает exit code 0, отказ — ненулевой код и безопасную машинную причину. Команда не применяет policy, не публикует сообщения и не запускает consumer. Обычный bootstrap не объявляет топологию и не запускает worker.
+
+Policy и AMQP-декларация выполняются отдельно в запущенном локальном окружении. GNU Make предоставляет короткие команды:
+
+```bash
+make rabbitmq-policy
+make rabbitmq-topology
+make rabbitmq-check
+```
+
+Прямой контейнерный эквивалент:
 
 ```bash
 docker compose exec -T rabbitmq su-exec rabbitmq sh /etc/ideakit-rabbitmq/apply-policy.sh
-docker compose exec -T rabbitmq su-exec rabbitmq rabbitmqctl -q list_policies -p ideakit
+docker compose exec -T php-fpm php yii platform-messaging/declare
+docker compose exec -T rabbitmq su-exec rabbitmq sh /etc/ideakit-rabbitmq/apply-policy.sh --check
 ```
+
+`rabbitmq-check` только читает broker state: проверяет оба exchanges, quorum queues, bindings и эффективную DLX policy, а не только работоспособность процесса. Отсутствие или расхождение топологии даёт ненулевой exit code без её исправления. `BROKER_SERVICE=rabbitmq-test` выбирает изолированный брокер только для `rabbitmq-policy` и `rabbitmq-check`; допустимы лишь `rabbitmq` и `rabbitmq-test`. `rabbitmq-topology` всегда использует конфигурацию приложения, а не этот параметр. Эти команды не удаляют объекты и не очищают очереди.
 
 Изолированный брокер запускается только с profile `messaging-test`, использует vhost `ideakit_transport_test`, синтетические credentials и tmpfs вместо рабочего volume. Его host-порт публикуется на `127.0.0.1:${TEST_RABBITMQ_PORT:-5673}`; контейнерные тесты используют `rabbitmq-test:5672`. Test configuration требует `APP_ENV=test` и явные `TEST_RABBITMQ_HOST`, `PORT`, `USER`, `PASSWORD`, `VHOST`, не подставляя рабочие credentials. Fixtures работают только с выделенным vhost и своими ресурсами; рабочие очереди не очищаются.
 
@@ -57,6 +70,10 @@ docker compose exec -T -e APP_ENV=test -e TEST_RABBITMQ_HOST=rabbitmq-test -e TE
 
 Перед PHP-проверками образ должен быть пересобран через `docker compose build php-fpm`: исходники не монтируются с хоста. [Configuration unit-тест](../../../tests/unit/modules/platform/infrastructure/rabbitmq/RabbitMqConnectionConfigTest.php) проверяет параметры и безопасные ошибки. [Broker integration-тест](../../../tests/integration/modules/platform/infrastructure/rabbitmq/RabbitMqTransportTest.php) подтверждает повторную декларацию, сохранность сообщения, оба routing paths и отказ без удаления несовместимого exchange. Тесты выполняются последовательно; недоступный broker является ошибкой, а не skip.
 
+`make test-rabbitmq` проверяет Compose, пересобирает PHP-образ, запускает PHP и отдельный test broker с ожиданием health-checks, применяет только test policy и выполняет целевые транспортные integration-тесты. Фикстура сама объявляет и удаляет свои тестовые AMQP-объекты; заранее объявлять их через рабочую console-команду не нужно. Цель не публикует smoke-сообщение в рабочую `critical`.
+
+Существующий [CI test job](../../../.github/workflows/ci_cd_pipeline.yml) подготавливает тот же test broker и policy, затем передаёт явные `TEST_RABBITMQ_*` для host runner. Проверка PHP 8.1 сохранена; добавлены требуемые extensions. Deployment-логика не изменена. Выполнение workflow в GitHub не заменяется локальным контейнерным прогоном.
+
 ## RabbitMQ: подтверждённая публикация
 
 [`IBrokerPublisher`](../../../modules/platform/application/port/IBrokerPublisher.php) принимает неизменяемый `BrokerEnvelope` и возвращает `BrokerPublishReceipt` только с подтверждённым outbox UUID. Envelope содержит outbox UUID, тип и версию команды, correlation UUID и существующий `TelegramUpdateReceivedPayload` с внутренним UUID update. Writer и его PostgreSQL-транзакция не меняются; publisher не обращается к БД.
@@ -66,6 +83,8 @@ docker compose exec -T -e APP_ENV=test -e TEST_RABBITMQ_HOST=rabbitmq-test -e TE
 [`RabbitMqPublisher`](../../../modules/platform/infrastructure/rabbitmq/RabbitMqPublisher.php) открывает собственные connection/channel для одной публикации в `ideakit.commands` с ключом `critical`, включает confirms и отправляет persistent message с `mandatory=true`. Успех требует ack без `basic.return`. Return вместе с ack даёт `unroutable`; nack — `nacked`, истечение ограниченного ожидания — `confirm_timeout`, сетевой сбой — `connection_failure`. Публичные исключения не содержат библиотечных деталей или цепочки исходного исключения. Channel и connection закрываются в `finally`; ошибка закрытия не подменяет первоначальный отказ. Конструктор не выполняет I/O.
 
 Автоматических повторов нет. Два явных вызова с тем же outbox UUID могут создать две доставки с одинаковым `message_id`: это at-least-once, не exactly-once. Confirm доказывает принятие брокером, но не выполнение команды. При потере подтверждения результат может быть неоднозначным; повтор и идемпотентная обработка принадлежат будущим relay/worker.
+
+Relay и изменение состояния outbox относятся к #43-4; постоянный worker, registry и диспетчеризация прикладных обработчиков — к #43-5. Текущий транспорт не связывает публикацию с PostgreSQL и не выполняет Telegram update.
 
 [Codec unit-тест](../../../tests/unit/modules/platform/infrastructure/rabbitmq/BrokerEnvelopeCodecTest.php) проверяет wire contract и границы. [Confirmation unit-тест](../../../tests/unit/modules/platform/infrastructure/rabbitmq/PublishConfirmationTest.php) проверяет ack, return+ack, nack, потерю соединения и конечный deadline без продления входящими событиями. Broker integration-тест дополнительно проверяет реальную публикацию и её properties, два явных вызова без скрытого повтора, unroutable return+ack и закрытый локальный порт. Relay и постоянный worker пока не реализованы.
 
@@ -86,6 +105,12 @@ Channel ограничивает тело 4096 байтами. Для malformed 
 Структура, ограничения и индексы проверяются [schema-тестом](../../../tests/integration/modules/platform/infrastructure/OutboxMessageSchemaTest.php). [Lifecycle-тест](../../../tests/integration/modules/platform/infrastructure/OutboxMigrationLifecycleTest.php) вызывает откат и повторное применение внутри откатываемой PostgreSQL-транзакции и сравнивает схемы родительских таблиц и Yii migration history. [Тест writer](../../../tests/integration/modules/platform/infrastructure/DbOutboxWriterTest.php) проверяет запись, общий commit/rollback, повторы и конкурентный конфликт в тестовой PostgreSQL.
 
 [DI-тест](../../../tests/integration/config/PlatformOutboxContainerBindingsTest.php) подтверждает общее соединение и rollback для web- и console-конфигураций. [Архитектурный тест](../../../tests/unit/modules/platform/PlatformArchitectureTest.php) защищает публичный Application-контракт от framework/Infrastructure-зависимостей и Platform Infrastructure от импорта Telegram internals.
+
+[Transport DI-тест](../../../tests/integration/config/PlatformBrokerContainerBindingsTest.php) проверяет ленивое разрешение web/console-конфигураций без network I/O, безопасный отказ при отсутствии настроек и результат console-команды:
+
+```bash
+docker compose exec -T php-fpm vendor/bin/codecept run integration tests/integration/config/PlatformBrokerContainerBindingsTest.php --no-colors
+```
 
 В запущенном локальном Compose-окружении с подготовленными тестовой БД и изолированным брокером проверки выполняются так:
 

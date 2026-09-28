@@ -20,6 +20,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.1'
+          extensions: mbstring, sockets, pdo_pgsql
           tools: composer
           coverage: none
 
@@ -48,6 +49,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.1'
+          extensions: mbstring, sockets, pdo_pgsql
           tools: phpstan
           coverage: none
 
@@ -106,6 +108,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.1'
+          extensions: mbstring, sockets, pdo_pgsql
           tools: composer
           coverage: none
 
@@ -136,7 +139,19 @@ jobs:
         run: |
           php tests/bin/yii migrate/up --interactive=0
 
+      - name: Prepare isolated RabbitMQ test broker
+        run: |
+          docker compose --profile messaging-test up -d --wait rabbitmq-test
+          docker compose exec -T rabbitmq-test su-exec rabbitmq sh /etc/ideakit-rabbitmq/apply-policy.sh
+
       - name: Run Codeception tests
+        env:
+          APP_ENV: test
+          TEST_RABBITMQ_HOST: 127.0.0.1
+          TEST_RABBITMQ_PORT: '5673'
+          TEST_RABBITMQ_USER: transport-test
+          TEST_RABBITMQ_PASSWORD: local-transport-test-only
+          TEST_RABBITMQ_VHOST: ideakit_transport_test
         run: |
           vendor/bin/codecept run
   deploy:

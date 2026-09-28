@@ -36,6 +36,9 @@ $config = [
     ],
     'params' => $params,
     'controllerMap' => [
+        'platform-messaging' => [
+            'class' => \modules\platform\presentation\console\MessagingController::class,
+        ],
 //        'fixture' => [ // Fixture generation command line.
 //            'class' => 'yii\faker\FixtureController',
 //        ],

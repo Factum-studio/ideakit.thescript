@@ -27,9 +27,19 @@ use core\infrastructure\repository\DbUserIdentityRepository;
 use core\infrastructure\repository\DbUserRepository;
 use core\infrastructure\security\YiiSecurityService;
 use core\security\JwtMiddleware;
+use modules\platform\application\handler\DeclareMessagingTopologyHandler;
+use modules\platform\application\port\IBrokerPublisher;
+use modules\platform\application\port\IBrokerReceiver;
+use modules\platform\application\port\IBrokerTopology;
 use modules\platform\application\port\IOutboxWriter;
 use modules\platform\application\route\OutboxRouteRegistry;
 use modules\platform\infrastructure\db\DbOutboxWriter;
+use modules\platform\infrastructure\rabbitmq\BrokerEnvelopeCodec;
+use modules\platform\infrastructure\rabbitmq\RabbitMqConnectionConfig;
+use modules\platform\infrastructure\rabbitmq\RabbitMqConnectionFactory;
+use modules\platform\infrastructure\rabbitmq\RabbitMqPublisher;
+use modules\platform\infrastructure\rabbitmq\RabbitMqReceiver;
+use modules\platform\infrastructure\rabbitmq\RabbitMqTopology;
 use modules\users\application\handler\MarkTelegramProfileBlockedHandler;
 use modules\users\application\handler\ResolveTelegramIdentityHandler;
 use modules\users\application\port\ITelegramIdentityProfileIdGenerator;
@@ -121,6 +131,39 @@ $container->setSingleton(IOutboxWriter::class, function () {
     }
 
     return new DbOutboxWriter($db, new OutboxRouteRegistry());
+});
+
+// ---------- Platform broker ----------
+$container->setSingleton(RabbitMqConnectionConfig::class, static function (): RabbitMqConnectionConfig {
+    return require __DIR__ . '/rabbitmq.php';
+});
+
+$container->setSingleton(RabbitMqConnectionFactory::class, static function () use ($container): RabbitMqConnectionFactory {
+    return new RabbitMqConnectionFactory($container->get(RabbitMqConnectionConfig::class));
+});
+
+$container->setSingleton(IBrokerTopology::class, static function () use ($container): IBrokerTopology {
+    return new RabbitMqTopology($container->get(RabbitMqConnectionFactory::class));
+});
+
+$container->setSingleton(IBrokerPublisher::class, static function () use ($container): IBrokerPublisher {
+    return new RabbitMqPublisher(
+        $container->get(RabbitMqConnectionFactory::class),
+        new BrokerEnvelopeCodec(),
+        $container->get(RabbitMqConnectionConfig::class)->confirmTimeout,
+    );
+});
+
+$container->set(IBrokerReceiver::class, static function () use ($container): IBrokerReceiver {
+    return new RabbitMqReceiver(
+        $container->get(RabbitMqConnectionFactory::class),
+        new BrokerEnvelopeCodec(),
+        $container->get(RabbitMqConnectionConfig::class)->consumerPollTimeout,
+    );
+});
+
+$container->set(DeclareMessagingTopologyHandler::class, static function () use ($container): DeclareMessagingTopologyHandler {
+    return new DeclareMessagingTopologyHandler($container->get(IBrokerTopology::class));
 });
 
 // ---------- UseCase ----------

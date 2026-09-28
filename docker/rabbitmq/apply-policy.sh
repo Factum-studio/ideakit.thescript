@@ -1,6 +1,16 @@
 #!/bin/sh
 set -eu
 
+mode=${1:-apply}
+case "$mode" in
+    apply|--check) ;;
+    *) printf '%s\n' 'Unsupported RabbitMQ policy operation.' >&2; exit 2 ;;
+esac
+if [ "$#" -gt 1 ]; then
+    printf '%s\n' 'Unexpected RabbitMQ policy arguments.' >&2
+    exit 2
+fi
+
 vhost=${RABBITMQ_DEFAULT_VHOST:?Broker vhost is required}
 vhost_base64=$(printf '%s' "$vhost" | base64 | tr -d '\n')
 definition=$(cat /etc/ideakit-rabbitmq/critical-policy.json)
@@ -35,6 +45,55 @@ compatible=$(rabbitmqctl -q eval "
 if [ "$compatible" != true ]; then
     printf '%s\n' 'RabbitMQ policy conflict; existing configuration was not changed.' >&2
     exit 1
+fi
+
+if [ "$mode" = --check ]; then
+    exchanges=$(rabbitmqctl -q list_exchanges --vhost "$vhost" name type durable auto_delete internal arguments --formatter=json)
+    queues=$(rabbitmqctl -q list_queues --vhost "$vhost" name type durable auto_delete exclusive arguments policy effective_policy_definition --formatter=json)
+    bindings=$(rabbitmqctl -q list_bindings --vhost "$vhost" source_name destination_name destination_kind routing_key arguments --formatter=json)
+    exchanges_base64=$(printf '%s' "$exchanges" | base64 | tr -d '\n')
+    queues_base64=$(printf '%s' "$queues" | base64 | tr -d '\n')
+    bindings_base64=$(printf '%s' "$bindings" | base64 | tr -d '\n')
+    ready=$(rabbitmqctl -q eval "
+        Exchanges = rabbit_json:decode(base64:decode(<<\"$exchanges_base64\">>)),
+        Queues = rabbit_json:decode(base64:decode(<<\"$queues_base64\">>)),
+        Bindings = rabbit_json:decode(base64:decode(<<\"$bindings_base64\">>)),
+        {ok, Json} = file:read_file(\"/etc/ideakit-rabbitmq/critical-policy.json\"),
+        Expected = rabbit_json:decode(Json),
+        Has = fun(Rows, Fields) ->
+            lists:any(fun(Row) ->
+                lists:all(fun({Key, Value}) -> maps:get(Key, Row, undefined) =:= Value end, Fields)
+            end, Rows)
+        end,
+        ExchangesReady = lists:all(fun(Name) ->
+            Has(Exchanges, [{<<\"name\">>, Name}, {<<\"type\">>, <<\"direct\">>},
+                {<<\"durable\">>, true}, {<<\"auto_delete\">>, false},
+                {<<\"internal\">>, false}, {<<\"arguments\">>, []}])
+        end, [<<\"ideakit.commands\">>, <<\"ideakit.dead-letter\">>]),
+        QueuesReady = lists:all(fun(Name) ->
+            Has(Queues, [{<<\"name\">>, Name}, {<<\"type\">>, <<\"quorum\">>},
+                {<<\"durable\">>, true}, {<<\"auto_delete\">>, false},
+                {<<\"exclusive\">>, <<>>},
+                {<<\"arguments\">>, [[<<\"x-queue-type\">>, <<\"longstr\">>, <<\"quorum\">>]]}])
+        end, [<<\"critical\">>, <<\"critical.failed\">>]),
+        BindingsReady = lists:all(fun({Source, Destination, Key}) ->
+            Has(Bindings, [{<<\"source_name\">>, Source}, {<<\"destination_name\">>, Destination},
+                {<<\"destination_kind\">>, <<\"queue\">>}, {<<\"routing_key\">>, Key},
+                {<<\"arguments\">>, []}])
+        end, [{<<\"ideakit.commands\">>, <<\"critical\">>, <<\"critical\">>},
+              {<<\"ideakit.dead-letter\">>, <<\"critical.failed\">>, <<\"critical.failed\">>}]),
+        PolicyReady = Has(Queues, [{<<\"name\">>, <<\"critical\">>},
+            {<<\"policy\">>, <<\"ideakit-critical-dlx\">>}, {<<\"effective_policy_definition\">>, Expected}]),
+        NoReturnRoute = Has(Queues, [{<<\"name\">>, <<\"critical.failed\">>},
+            {<<\"effective_policy_definition\">>, #{}}]),
+        ExchangesReady andalso QueuesReady andalso BindingsReady andalso PolicyReady andalso NoReturnRoute.
+    ")
+    if [ "$ready" != true ]; then
+        printf '%s\n' 'RabbitMQ topology or effective policy mismatch.' >&2
+        exit 1
+    fi
+    printf '%s\n' 'RabbitMQ topology and effective policy verified.'
+    exit 0
 fi
 
 rabbitmqctl -q set_policy --vhost "$vhost" --apply-to quorum_queues --priority 10 \

@@ -21,6 +21,11 @@ final class PlatformArchitectureTest extends Unit
                 'modules\\platform\\infrastructure\\', 'modules\\telegram\\',
             ],
             'infrastructure' => ['modules\\telegram\\'],
+            'infrastructure/rabbitmq' => [
+                'yii\\db\\', 'ActiveRecord', 'PDO', 'core\\', 'modules\\users\\',
+                'modules\\platform\\infrastructure\\db\\',
+            ],
+            'presentation' => ['PhpAmqpLib\\', 'AMQP', 'modules\\platform\\infrastructure\\'],
         ];
         $violations = [];
 

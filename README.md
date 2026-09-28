@@ -69,7 +69,7 @@ IDEAKIT разработан как закрытое программное об
 
 #### Утверждённая матрица runtime
 
-Приложение сохраняет совместимость с PHP 8.1 и более новыми версиями в пределах ограничений Composer. Локальный Docker Compose использует PHP-FPM 8.2.32 и запускает Nginx, PostgreSQL, Redis и RabbitMQ вместе с приложением. Миграции и прикладные таблицы, Redis-кэш, RabbitMQ topology, workers и scheduler пока не реализованы.
+Приложение сохраняет совместимость с PHP 8.1 и более новыми версиями в пределах ограничений Composer. Локальный Docker Compose использует PHP-FPM 8.2.32 и запускает Nginx, PostgreSQL, Redis и RabbitMQ вместе с приложением. Миграции и RabbitMQ topology применяются отдельно, не при старте контейнеров. Прикладной Redis-кэш, relay, workers и scheduler пока не реализованы.
 
 ### Внешние сервисы и микросервисы
 
@@ -162,6 +162,20 @@ make stop
 | `make requirements` | проверить платформенные требования PHP и Yii |
 | `make console` | проверить запуск Yii console |
 | `make diagnose` | проверить уже запущенное окружение без автоматического запуска |
+| `make rabbitmq-policy` | отдельно применить локальную DLX policy |
+| `make rabbitmq-topology` | явно объявить RabbitMQ exchanges, очереди и bindings |
+| `make rabbitmq-check` | проверить топологию и эффективную policy без изменения брокера |
+| `make test-rabbitmq` | подготовить изолированный брокер и запустить транспортные тесты |
+
+После запуска контейнеров RabbitMQ настраивается отдельными командами:
+
+```bash
+make rabbitmq-policy
+make rabbitmq-topology
+make rabbitmq-check
+```
+
+Они не запускают worker и не отправляют сообщения в рабочую очередь. Прямые контейнерные эквиваленты, параметры и изоляция тестового брокера описаны в [README Platform](./docs/modules/platform/README.md#rabbitmq-конфигурация-и-топология).
 
 Логи можно ограничить одним сервисом и изменить число строк:
 
