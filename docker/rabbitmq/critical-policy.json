@@ -1,0 +1,6 @@
+{
+    "dead-letter-exchange": "ideakit.dead-letter",
+    "dead-letter-routing-key": "critical.failed",
+    "dead-letter-strategy": "at-least-once",
+    "overflow": "reject-publish"
+}

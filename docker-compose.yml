@@ -27,6 +27,18 @@ services:
       TEST_DB_DSN: pgsql:host=postgres;port=5432;dbname=ideakit_test
       TEST_DB_USERNAME: ${POSTGRES_USER:-ideakit}
       TEST_DB_PASSWORD: ${POSTGRES_PASSWORD:-local-development-only}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: "5672"
+      RABBITMQ_USER: ${RABBITMQ_USER:-ideakit}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-local-development-only}
+      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-ideakit}
+      RABBITMQ_CONNECTION_TIMEOUT: ${RABBITMQ_CONNECTION_TIMEOUT:-3}
+      RABBITMQ_CHANNEL_RPC_TIMEOUT: ${RABBITMQ_CHANNEL_RPC_TIMEOUT:-5}
+      RABBITMQ_HEARTBEAT: ${RABBITMQ_HEARTBEAT:-10}
+      RABBITMQ_READ_TIMEOUT: ${RABBITMQ_READ_TIMEOUT:-25}
+      RABBITMQ_WRITE_TIMEOUT: ${RABBITMQ_WRITE_TIMEOUT:-25}
+      RABBITMQ_CONFIRM_TIMEOUT: ${RABBITMQ_CONFIRM_TIMEOUT:-5}
+      RABBITMQ_CONSUMER_POLL_TIMEOUT: ${RABBITMQ_CONSUMER_POLL_TIMEOUT:-1}
     depends_on:
       postgres:
         condition: service_healthy
@@ -117,6 +129,7 @@ services:
       - "127.0.0.1:${RABBITMQ_PORT:-5672}:5672"
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
+      - ./docker/rabbitmq:/etc/ideakit-rabbitmq:ro
     networks:
       - runtime
       - ingress
@@ -129,6 +142,33 @@ services:
         - -q
         - check_running
       interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  rabbitmq-test:
+    profiles: [messaging-test]
+    image: rabbitmq:4.3.4-alpine@sha256:a762c02d0c1fa7c3de1eca5d62b4fe9812649f41a3b38d716e1afcbe7e5387ad
+    hostname: rabbitmq-test
+    environment:
+      RABBITMQ_DEFAULT_USER: transport-test
+      RABBITMQ_DEFAULT_PASS: local-transport-test-only
+      RABBITMQ_DEFAULT_VHOST: ideakit_transport_test
+    init: true
+    stop_signal: SIGTERM
+    stop_grace_period: 30s
+    ports:
+      - "127.0.0.1:${TEST_RABBITMQ_PORT:-5673}:5672"
+    tmpfs:
+      - /var/lib/rabbitmq:uid=100,gid=101,mode=0700
+    volumes:
+      - ./docker/rabbitmq:/etc/ideakit-rabbitmq:ro
+    networks:
+      - runtime
+      - ingress
+    healthcheck:
+      test: [CMD, su-exec, rabbitmq, rabbitmq-diagnostics, -q, check_running]
+      interval: 5s
       timeout: 5s
       retries: 12
       start_period: 20s

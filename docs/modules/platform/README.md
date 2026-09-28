@@ -16,7 +16,46 @@ PostgreSQL проверяет допустимые назначения и со�
 
 Совпадающий повтор возвращает прежний ID без изменения строки, включая состояние доставки, correlation ID и время. Повтор распознаётся и после очистки payload по сохранённому hash и неизменяемым метаданным. Другой эффект с тем же ключом отклоняется. `OutboxWriteException` различает `invalid_intent`, `unsupported_route`, `transaction_required`, `idempotency_conflict` и `persistence_failure`; публичный текст не содержит SQL или входных данных. Ошибку БД writer не повторяет: rollback и повтор всего сценария принадлежат вызывающему коду.
 
-RabbitMQ topology, relay, worker, восстановление lease, очистка payload и Telegram webhook ещё не реализованы. Запись не отправляет сообщения и не обращается к внешним системам.
+Запись не отправляет сообщения и не обращается к внешним системам. Relay, worker, восстановление lease, очистка payload и Telegram webhook ещё не реализованы.
+
+## RabbitMQ: конфигурация и топология
+
+[`IBrokerTopology`](../../../modules/platform/application/port/IBrokerTopology.php) предоставляет явную команду `declare()`. Infrastructure-адаптер [`RabbitMqTopology`](../../../modules/platform/infrastructure/rabbitmq/RabbitMqTopology.php) объявляет durable direct exchanges `ideakit.commands` и `ideakit.dead-letter`, durable quorum queues `critical` и `critical.failed` и bindings с одноимёнными routing keys. Повторная декларация сохраняет сообщения. Несовместимая декларация возвращает безопасный `topology_mismatch`, не удаляя существующие объекты; сетевой сбой — `connection_failure`. Соединение закрывается после операции. Один локальный узел RabbitMQ не обеспечивает HA.
+
+DLX-настройки не входят в аргументы AMQP-декларации. [Tracked policy](../../../docker/rabbitmq/critical-policy.json) для `^critical$` отдельно задаёт `ideakit.dead-letter` / `critical.failed`, `dead-letter-strategy=at-least-once` и `overflow=reject-publish`. [Скрипт применения](../../../docker/rabbitmq/apply-policy.sh) использует локальный broker CLI, отклоняет несовместимую одноимённую policy, конкурирующую policy с равным/большим приоритетом и подходящую operator policy. Точное повторное применение безопасно; PHP-клиент не использует management API. Фактическая доставка через DLX будет проверена вместе с receiver.
+
+[`config/rabbitmq.php`](../../../config/rabbitmq.php) создаёт неизменяемую Infrastructure-конфигурацию из окружения без открытия соединения. Host, user, password и vhost обязательны: непустые строки до 255 байт без управляющих символов. `RABBITMQ_PORT` — целое число 1–65535. Числовые строки проверяются до преобразования; ошибочные параметры дают `configuration_invalid` без входных значений. Фабрика использует закреплённую в Composer lock `php-amqplib` 3.7.4 и расширения `mbstring`/`sockets`; конструкторы не выполняют I/O, AMQP debug отключён.
+
+| Переменная | Default | Граница |
+|---|---:|---|
+| `RABBITMQ_CONNECTION_TIMEOUT` | 3 s | > 0, ≤ 30 s |
+| `RABBITMQ_CHANNEL_RPC_TIMEOUT` | 5 s | > 0, ≤ 30 s, не больше I/O timeout |
+| `RABBITMQ_HEARTBEAT` | 10 s | integer 1–60 s |
+| `RABBITMQ_READ_TIMEOUT`, `RABBITMQ_WRITE_TIMEOUT` | 25 s | > 2 × heartbeat, ≤ 120 s |
+| `RABBITMQ_CONFIRM_TIMEOUT` | 5 s | > 0, ≤ 30 s |
+| `RABBITMQ_CONSUMER_POLL_TIMEOUT` | 1 s | > 0, ≤ 30 s |
+
+Compose передаёт PHP host `rabbitmq` и внутренний порт 5672. Для native-запуска [.env.example](../../../.env.example) использует `127.0.0.1` и опубликованный порт; реальный `.env` не требуется контейнерам. Ленивый DI, console-команда, publisher и receiver ещё не подключены: обычный bootstrap не объявляет топологию и не публикует сообщения.
+
+Policy применяется отдельно в запущенном локальном брокере:
+
+```bash
+docker compose exec -T rabbitmq su-exec rabbitmq sh /etc/ideakit-rabbitmq/apply-policy.sh
+docker compose exec -T rabbitmq su-exec rabbitmq rabbitmqctl -q list_policies -p ideakit
+```
+
+Изолированный брокер запускается только с profile `messaging-test`, использует vhost `ideakit_transport_test`, синтетические credentials и tmpfs вместо рабочего volume. Его host-порт публикуется на `127.0.0.1:${TEST_RABBITMQ_PORT:-5673}`; контейнерные тесты используют `rabbitmq-test:5672`. Test configuration требует `APP_ENV=test` и явные `TEST_RABBITMQ_HOST`, `PORT`, `USER`, `PASSWORD`, `VHOST`, не подставляя рабочие credentials. Fixtures работают только с выделенным vhost и своими ресурсами; рабочие очереди не очищаются.
+
+Проверенные команды подготовки и запуска транспортных тестов:
+
+```bash
+docker compose --profile messaging-test up -d --wait rabbitmq-test postgres
+docker compose exec -T rabbitmq-test su-exec rabbitmq sh /etc/ideakit-rabbitmq/apply-policy.sh
+docker compose exec -T php-fpm vendor/bin/codecept run unit tests/unit/modules/platform --no-colors
+docker compose exec -T -e APP_ENV=test -e TEST_RABBITMQ_HOST=rabbitmq-test -e TEST_RABBITMQ_PORT=5672 -e TEST_RABBITMQ_USER=transport-test -e TEST_RABBITMQ_PASSWORD=local-transport-test-only -e TEST_RABBITMQ_VHOST=ideakit_transport_test php-fpm vendor/bin/codecept run integration tests/integration/modules/platform/infrastructure/rabbitmq --no-colors
+```
+
+Перед PHP-проверками образ должен быть пересобран через `docker compose build php-fpm`: исходники не монтируются с хоста. [Configuration unit-тест](../../../tests/unit/modules/platform/infrastructure/rabbitmq/RabbitMqConnectionConfigTest.php) проверяет параметры и безопасные ошибки. [Broker integration-тест](../../../tests/integration/modules/platform/infrastructure/rabbitmq/RabbitMqTransportTest.php) подтверждает повторную декларацию, сохранность сообщения, оба routing paths и отказ без удаления несовместимого exchange. Тесты выполняются последовательно; недоступный broker является ошибкой, а не skip.
 
 ## Проверка
 
@@ -24,11 +63,11 @@ RabbitMQ topology, relay, worker, восстановление lease, очист
 
 [DI-тест](../../../tests/integration/config/PlatformOutboxContainerBindingsTest.php) подтверждает общее соединение и rollback для web- и console-конфигураций. [Архитектурный тест](../../../tests/unit/modules/platform/PlatformArchitectureTest.php) защищает публичный Application-контракт от framework/Infrastructure-зависимостей и Platform Infrastructure от импорта Telegram internals.
 
-В запущенном локальном Compose-окружении с подготовленной тестовой БД проверки выполняются так:
+В запущенном локальном Compose-окружении с подготовленными тестовой БД и изолированным брокером проверки выполняются так:
 
 ```bash
 docker compose exec -T php-fpm vendor/bin/codecept run unit tests/unit/modules/platform --no-colors
-docker compose exec -T -e APP_ENV=test -e APP_DEBUG=false -e 'TEST_DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' php-fpm vendor/bin/codecept run integration tests/integration/modules/platform/infrastructure --no-colors
+docker compose exec -T -e APP_ENV=test -e APP_DEBUG=false -e 'TEST_DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' -e TEST_RABBITMQ_HOST=rabbitmq-test -e TEST_RABBITMQ_PORT=5672 -e TEST_RABBITMQ_USER=transport-test -e TEST_RABBITMQ_PASSWORD=local-transport-test-only -e TEST_RABBITMQ_VHOST=ideakit_transport_test php-fpm vendor/bin/codecept run integration tests/integration/modules/platform/infrastructure --no-colors
 docker compose exec -T -e APP_ENV=test -e APP_DEBUG=false -e 'TEST_DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' php-fpm vendor/bin/codecept run integration tests/integration/config/PlatformOutboxContainerBindingsTest.php --no-colors
 ```
 
