@@ -35,7 +35,7 @@ DLX-настройки не входят в аргументы AMQP-деклар
 | `RABBITMQ_CONFIRM_TIMEOUT` | 5 s | > 0, ≤ 30 s |
 | `RABBITMQ_CONSUMER_POLL_TIMEOUT` | 1 s | > 0, ≤ 30 s |
 
-Compose передаёт PHP host `rabbitmq` и внутренний порт 5672. Для native-запуска [.env.example](../../../.env.example) использует `127.0.0.1` и опубликованный порт; реальный `.env` не требуется контейнерам. Ленивый DI, console-команда, publisher и receiver ещё не подключены: обычный bootstrap не объявляет топологию и не публикует сообщения.
+Compose передаёт PHP host `rabbitmq` и внутренний порт 5672. Для native-запуска [.env.example](../../../.env.example) использует `127.0.0.1` и опубликованный порт; реальный `.env` не требуется контейнерам. Топология и publisher пока не подключены к DI; console-команда и receiver ещё не реализованы. Обычный bootstrap не объявляет топологию и не публикует сообщения.
 
 Policy применяется отдельно в запущенном локальном брокере:
 
@@ -56,6 +56,18 @@ docker compose exec -T -e APP_ENV=test -e TEST_RABBITMQ_HOST=rabbitmq-test -e TE
 ```
 
 Перед PHP-проверками образ должен быть пересобран через `docker compose build php-fpm`: исходники не монтируются с хоста. [Configuration unit-тест](../../../tests/unit/modules/platform/infrastructure/rabbitmq/RabbitMqConnectionConfigTest.php) проверяет параметры и безопасные ошибки. [Broker integration-тест](../../../tests/integration/modules/platform/infrastructure/rabbitmq/RabbitMqTransportTest.php) подтверждает повторную декларацию, сохранность сообщения, оба routing paths и отказ без удаления несовместимого exchange. Тесты выполняются последовательно; недоступный broker является ошибкой, а не skip.
+
+## RabbitMQ: подтверждённая публикация
+
+[`IBrokerPublisher`](../../../modules/platform/application/port/IBrokerPublisher.php) принимает неизменяемый `BrokerEnvelope` и возвращает `BrokerPublishReceipt` только с подтверждённым outbox UUID. Envelope содержит outbox UUID, тип и версию команды, correlation UUID и существующий `TelegramUpdateReceivedPayload` с внутренним UUID update. Writer и его PostgreSQL-транзакция не меняются; publisher не обращается к БД.
+
+[`BrokerEnvelopeCodec`](../../../modules/platform/infrastructure/rabbitmq/BrokerEnvelopeCodec.php) сериализует ровно `outbox_id`, `message_type`, `schema_version`, `correlation_id`, `payload`; payload содержит только `update_id`. UUID канонические, типы проверяются без преобразования, неизвестные поля отклоняются. Ограничения: payload ≤ 1024 байт, envelope ≤ 4096 байт, JSON depth ≤ 16. Malformed JSON, усечённое тело и несовпадение AMQP properties дают `invalid_envelope`. AMQP `message_id` и `correlation_id` совпадают с envelope; `content_type=application/json`, `delivery_mode=2`. Codec проверяет техническую структуру, а не разрешение типа/версии для dispatch; прикладной registry ещё не реализован.
+
+[`RabbitMqPublisher`](../../../modules/platform/infrastructure/rabbitmq/RabbitMqPublisher.php) открывает собственные connection/channel для одной публикации в `ideakit.commands` с ключом `critical`, включает confirms и отправляет persistent message с `mandatory=true`. Успех требует ack без `basic.return`. Return вместе с ack даёт `unroutable`; nack — `nacked`, истечение ограниченного ожидания — `confirm_timeout`, сетевой сбой — `connection_failure`. Публичные исключения не содержат библиотечных деталей или цепочки исходного исключения. Channel и connection закрываются в `finally`; ошибка закрытия не подменяет первоначальный отказ. Конструктор не выполняет I/O.
+
+Автоматических повторов нет. Два явных вызова с тем же outbox UUID могут создать две доставки с одинаковым `message_id`: это at-least-once, не exactly-once. Confirm доказывает принятие брокером, но не выполнение команды. При потере подтверждения результат может быть неоднозначным; повтор и идемпотентная обработка принадлежат будущим relay/worker.
+
+[Codec unit-тест](../../../tests/unit/modules/platform/infrastructure/rabbitmq/BrokerEnvelopeCodecTest.php) проверяет wire contract и границы. [Confirmation unit-тест](../../../tests/unit/modules/platform/infrastructure/rabbitmq/PublishConfirmationTest.php) проверяет ack, return+ack, nack, потерю соединения и конечный deadline без продления входящими событиями. Broker integration-тест дополнительно проверяет реальную публикацию и её properties, два явных вызова без скрытого повтора, unroutable return+ack и закрытый локальный порт. Получение с manual ack, DLX delivery, relay и постоянный worker пока не реализованы.
 
 ## Проверка
 

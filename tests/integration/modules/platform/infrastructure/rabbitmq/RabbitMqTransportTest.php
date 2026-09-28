@@ -5,9 +5,16 @@ declare(strict_types=1);
 namespace tests\integration\modules\platform\infrastructure\rabbitmq;
 
 use Codeception\Test\Unit;
+use modules\platform\application\dto\BrokerEnvelope;
 use modules\platform\application\enum\BrokerTransportErrorCode;
 use modules\platform\application\exception\BrokerTransportException;
+use modules\platform\application\message\TelegramUpdateReceivedPayload;
+use modules\platform\infrastructure\rabbitmq\BrokerEnvelopeCodec;
+use modules\platform\infrastructure\rabbitmq\RabbitMqConnectionConfig;
+use modules\platform\infrastructure\rabbitmq\RabbitMqConnectionFactory;
+use modules\platform\infrastructure\rabbitmq\RabbitMqPublisher;
 use modules\platform\infrastructure\rabbitmq\RabbitMqTopology;
+use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Exception\AMQPProtocolChannelException;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
@@ -119,6 +126,110 @@ final class RabbitMqTransportTest extends Unit
                 $channel->exchange_delete('ideakit.dead-letter');
             } finally {
                 $cleanup->close();
+            }
+        }
+    }
+
+    public function testConfirmedPublicationPreservesPropertiesAndIdOnExplicitRepeat(): void
+    {
+        $this->withTopology(function (AMQPChannel $channel, RabbitMqConnectionFactory $factory): void {
+            $codec = new BrokerEnvelopeCodec();
+            $publisher = new RabbitMqPublisher($factory, $codec, 5.0);
+            $envelope = self::envelope();
+            foreach ([1, 2] as $expectedCount) {
+                $receipt = $publisher->publish($envelope);
+                self::assertSame($envelope->outboxId, $receipt->outboxId);
+                [, $count] = $channel->queue_declare('critical', true);
+                self::assertSame($expectedCount, $count);
+            }
+            foreach ([1, 2] as $delivery) {
+                $message = $channel->basic_get('critical');
+                self::assertInstanceOf(AMQPMessage::class, $message);
+                self::assertSame($codec->encode($envelope)->getBody(), $message->getBody());
+                self::assertSame('application/json', $message->get('content_type'));
+                self::assertSame(2, $message->get('delivery_mode'));
+                self::assertSame($envelope->outboxId, $message->get('message_id'));
+                self::assertSame($envelope->correlationId, $message->get('correlation_id'));
+                self::assertEquals($envelope, $codec->decode($message));
+                $message->ack();
+            }
+            self::assertNull($channel->basic_get('critical'));
+        });
+    }
+
+    public function testReturnedPublicationIsNotReportedAsConfirmedSuccess(): void
+    {
+        $this->withTopology(function (AMQPChannel $channel, RabbitMqConnectionFactory $factory): void {
+            $channel->queue_unbind('critical', 'ideakit.commands', 'critical');
+            try {
+                $publisher = new RabbitMqPublisher($factory, new BrokerEnvelopeCodec(), 5.0);
+                try {
+                    $publisher->publish(self::envelope());
+                    self::fail('Expected unroutable publication.');
+                } catch (BrokerTransportException $exception) {
+                    self::assertSame(BrokerTransportErrorCode::UNROUTABLE, $exception->errorCode);
+                    self::assertSame('unroutable', $exception->getMessage());
+                    self::assertNull($exception->getPrevious());
+                }
+                [, $count] = $channel->queue_declare('critical', true);
+                self::assertSame(0, $count);
+            } finally {
+                $channel->queue_bind('critical', 'ideakit.commands', 'critical');
+            }
+        });
+    }
+
+    public function testClosedLocalPortFailsWithoutExposingConnectionContext(): void
+    {
+        $factory = new RabbitMqConnectionFactory(new RabbitMqConnectionConfig(
+            '127.0.0.1',
+            1,
+            'synthetic-user',
+            'synthetic-password',
+            'ideakit_transport_test',
+            0.2,
+        ));
+        $publisher = new RabbitMqPublisher($factory, new BrokerEnvelopeCodec(), 0.2);
+        $started = hrtime(true);
+        try {
+            $publisher->publish(self::envelope());
+            self::fail('Expected unavailable local connection.');
+        } catch (BrokerTransportException $exception) {
+            self::assertSame(BrokerTransportErrorCode::CONNECTION_FAILURE, $exception->errorCode);
+            self::assertSame('connection_failure', $exception->getMessage());
+            self::assertNull($exception->getPrevious());
+            self::assertLessThan(5.0, (hrtime(true) - $started) / 1e9);
+        }
+    }
+
+    private static function envelope(): BrokerEnvelope
+    {
+        return new BrokerEnvelope(
+            '01890f4d-3c2a-7f48-8c0b-123456789ac4',
+            'telegram.update.received',
+            '1.0',
+            '01890f4d-3c2a-7f48-8c0b-123456789ac5',
+            new TelegramUpdateReceivedPayload('01890f4d-3c2a-7f48-8c0b-123456789ac6'),
+        );
+    }
+
+    /** @param callable(AMQPChannel, RabbitMqConnectionFactory): void $test */
+    private function withTopology(callable $test): void
+    {
+        $factory = RabbitMqTestEnvironment::factory();
+        (new RabbitMqTopology($factory))->declare();
+        $connection = $factory->connect();
+        try {
+            $test($connection->channel(), $factory);
+        } finally {
+            try {
+                $channel = $connection->channel();
+                $channel->queue_delete('critical');
+                $channel->queue_delete('critical.failed');
+                $channel->exchange_delete('ideakit.commands');
+                $channel->exchange_delete('ideakit.dead-letter');
+            } finally {
+                $connection->close();
             }
         }
     }
