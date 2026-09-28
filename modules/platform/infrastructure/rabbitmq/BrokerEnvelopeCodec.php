@@ -11,6 +11,7 @@ use modules\platform\application\exception\BrokerTransportException;
 use modules\platform\application\exception\OutboxWriteException;
 use modules\platform\application\message\TelegramUpdateReceivedPayload;
 use PhpAmqpLib\Message\AMQPMessage;
+use PhpAmqpLib\Wire\AMQPTable;
 use stdClass;
 
 final class BrokerEnvelopeCodec
@@ -73,11 +74,23 @@ final class BrokerEnvelopeCodec
                 }
             }
             $properties = $message->get_properties();
+            if (array_key_exists('application_headers', $properties)) {
+                $headers = $properties['application_headers'];
+                if (!$headers instanceof AMQPTable) {
+                    throw new BrokerTransportException(BrokerTransportErrorCode::INVALID_ENVELOPE);
+                }
+                foreach ($headers->getNativeData() as $name => $count) {
+                    if (!in_array($name, ['x-delivery-count', 'x-acquired-count'], true)
+                        || !is_int($count) || $count < 0
+                    ) {
+                        throw new BrokerTransportException(BrokerTransportErrorCode::INVALID_ENVELOPE);
+                    }
+                }
+            }
             if (($properties['message_id'] ?? null) !== $fields->outbox_id
                 || ($properties['correlation_id'] ?? null) !== $fields->correlation_id
                 || ($properties['content_type'] ?? null) !== 'application/json'
                 || ($properties['delivery_mode'] ?? null) !== 2
-                || array_key_exists('application_headers', $properties)
             ) {
                 throw new BrokerTransportException(BrokerTransportErrorCode::INVALID_ENVELOPE);
             }

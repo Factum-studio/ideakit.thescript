@@ -13,9 +13,11 @@ use modules\platform\infrastructure\rabbitmq\BrokerEnvelopeCodec;
 use modules\platform\infrastructure\rabbitmq\RabbitMqConnectionConfig;
 use modules\platform\infrastructure\rabbitmq\RabbitMqConnectionFactory;
 use modules\platform\infrastructure\rabbitmq\RabbitMqPublisher;
+use modules\platform\infrastructure\rabbitmq\RabbitMqReceiver;
 use modules\platform\infrastructure\rabbitmq\RabbitMqTopology;
 use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Exception\AMQPProtocolChannelException;
+use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
 
@@ -200,6 +202,200 @@ final class RabbitMqTransportTest extends Unit
             self::assertNull($exception->getPrevious());
             self::assertLessThan(5.0, (hrtime(true) - $started) / 1e9);
         }
+        $receiver = new RabbitMqReceiver($factory, new BrokerEnvelopeCodec(), 0.2);
+        try {
+            self::assertTransportError(BrokerTransportErrorCode::CONNECTION_FAILURE, static fn () => $receiver->receive(0.2));
+        } finally {
+            $receiver->close();
+        }
+    }
+
+    public function testManualAckAndPrefetchLimitOutstandingDelivery(): void
+    {
+        $this->withTopology(function (AMQPChannel $channel, RabbitMqConnectionFactory $factory): void {
+            $codec = new BrokerEnvelopeCodec();
+            $publisher = new RabbitMqPublisher($factory, $codec, 5.0);
+            $first = self::envelope();
+            $second = new BrokerEnvelope(
+                '01890f4d-3c2a-7f48-8c0b-123456789ad4',
+                'future.command',
+                '2.0',
+                $first->correlationId,
+                $first->payload,
+            );
+            $publisher->publish($first);
+            $publisher->publish($second);
+            $receiver = new RabbitMqReceiver($factory, $codec, 0.1);
+            try {
+                $delivery = $receiver->receive(5.0);
+                self::assertNotNull($delivery);
+                self::assertEquals($first, $delivery->message());
+                self::assertNull($receiver->receive(0.2));
+                $delivery->acknowledge();
+                self::assertTransportError(BrokerTransportErrorCode::DELIVERY_ALREADY_SETTLED, $delivery->reject(...));
+                $next = $receiver->receive(5.0);
+                self::assertNotNull($next);
+                self::assertEquals($second, $next->message());
+                $next->acknowledge();
+                self::assertTransportError(BrokerTransportErrorCode::DELIVERY_ALREADY_SETTLED, $next->acknowledge(...));
+                self::assertNull($receiver->receive(0.2));
+            } finally {
+                $receiver->close();
+            }
+            $replacement = new RabbitMqReceiver($factory, $codec, 0.1);
+            try {
+                self::assertNull($replacement->receive(0.2));
+            } finally {
+                $replacement->close();
+            }
+        });
+    }
+
+    public function testClosingBeforeAckAllowsRedeliveryAndInvalidatesOldDelivery(): void
+    {
+        $this->withTopology(function (AMQPChannel $channel, RabbitMqConnectionFactory $factory): void {
+            $codec = new BrokerEnvelopeCodec();
+            (new RabbitMqPublisher($factory, $codec, 5.0))->publish(self::envelope());
+            $receiver = new RabbitMqReceiver($factory, $codec, 0.1);
+            try {
+                $delivery = $receiver->receive(5.0);
+                self::assertNotNull($delivery);
+                self::assertEquals(self::envelope(), $delivery->message());
+            } finally {
+                $receiver->close();
+            }
+            self::assertTransportError(BrokerTransportErrorCode::DELIVERY_UNAVAILABLE, $delivery->acknowledge(...));
+            self::assertTransportError(BrokerTransportErrorCode::DELIVERY_UNAVAILABLE, $delivery->reject(...));
+            $replacement = new RabbitMqReceiver($factory, $codec, 0.1);
+            try {
+                $redelivery = $replacement->receive(5.0);
+                self::assertNotNull($redelivery);
+                self::assertEquals(self::envelope(), $redelivery->message());
+                $redelivery->acknowledge();
+                self::assertNull($replacement->receive(0.2));
+            } finally {
+                $replacement->close();
+            }
+        });
+    }
+
+    public function testRejectDeadLettersWithBrokerMetadataAndNoAutomaticReturn(): void
+    {
+        $this->withTopology(function (AMQPChannel $channel, RabbitMqConnectionFactory $factory): void {
+            $codec = new BrokerEnvelopeCodec();
+            (new RabbitMqPublisher($factory, $codec, 5.0))->publish(self::envelope());
+            $receiver = new RabbitMqReceiver($factory, $codec, 0.1);
+            try {
+                $delivery = $receiver->receive(5.0);
+                self::assertNotNull($delivery);
+                $delivery->reject();
+                self::assertTransportError(BrokerTransportErrorCode::DELIVERY_ALREADY_SETTLED, $delivery->acknowledge(...));
+                $failed = self::awaitFailedMessage($channel, 5.0);
+                self::assertInstanceOf(AMQPMessage::class, $failed);
+                self::assertSame($codec->encode(self::envelope())->getBody(), $failed->getBody());
+                $headers = $failed->get('application_headers')->getNativeData();
+                self::assertSame('rejected', $headers['x-death'][0]['reason']);
+                self::assertSame('critical', $headers['x-death'][0]['queue']);
+                $failed->ack();
+                self::assertNull($receiver->receive(0.2));
+            } finally {
+                $receiver->close();
+            }
+        });
+    }
+
+    public function testDeadLetterIsRetainedUntilErrorBindingIsRestored(): void
+    {
+        $this->withTopology(function (AMQPChannel $channel, RabbitMqConnectionFactory $factory): void {
+            $codec = new BrokerEnvelopeCodec();
+            $receiver = new RabbitMqReceiver($factory, $codec, 0.1);
+            $channel->queue_unbind('critical.failed', 'ideakit.dead-letter', 'critical.failed');
+            try {
+                (new RabbitMqPublisher($factory, $codec, 5.0))->publish(self::envelope());
+                $delivery = $receiver->receive(5.0);
+                self::assertNotNull($delivery);
+                $delivery->reject();
+                self::assertNull($receiver->receive(0.2));
+                $receiver->close();
+                self::assertNull(self::awaitFailedMessage($channel, 1.0));
+                $channel->queue_bind('critical.failed', 'ideakit.dead-letter', 'critical.failed');
+                $failed = self::awaitFailedMessage($channel, 195.0);
+                self::assertInstanceOf(AMQPMessage::class, $failed);
+                self::assertSame($codec->encode(self::envelope())->getBody(), $failed->getBody());
+                $failed->ack();
+            } finally {
+                try {
+                    $channel->queue_bind('critical.failed', 'ideakit.dead-letter', 'critical.failed');
+                } finally {
+                    $receiver->close();
+                }
+            }
+        });
+    }
+
+    /** @dataProvider invalidBodies */
+    public function testInvalidBodyRemainsRejectable(string $body): void
+    {
+        $this->withTopology(function (AMQPChannel $channel, RabbitMqConnectionFactory $factory) use ($body): void {
+            $channel->confirm_select();
+            $channel->basic_publish(new AMQPMessage($body, ['delivery_mode' => 2]), 'ideakit.commands', 'critical', true);
+            $channel->wait_for_pending_acks_returns(5.0);
+            $receiver = new RabbitMqReceiver($factory, new BrokerEnvelopeCodec(), 0.1);
+            try {
+                $delivery = $receiver->receive(5.0);
+                self::assertNotNull($delivery);
+                self::assertTransportError(BrokerTransportErrorCode::INVALID_ENVELOPE, $delivery->message(...));
+                $delivery->reject();
+                $failed = self::awaitFailedMessage($channel, 5.0);
+                self::assertInstanceOf(AMQPMessage::class, $failed);
+                self::assertSame($body, $failed->getBody());
+                $failed->ack();
+            } finally {
+                $receiver->close();
+            }
+        });
+    }
+
+    /** @return array<string, array{string}> */
+    public static function invalidBodies(): array
+    {
+        return ['malformed' => ['{'], 'oversized' => [str_repeat('x', 4097)]];
+    }
+
+    /** @param callable(): mixed $operation */
+    private static function assertTransportError(BrokerTransportErrorCode $code, callable $operation): void
+    {
+        try {
+            $operation();
+            self::fail('Expected transport failure.');
+        } catch (BrokerTransportException $exception) {
+            self::assertSame($code, $exception->errorCode);
+            self::assertSame($code->value, $exception->getMessage());
+            self::assertNull($exception->getPrevious());
+        }
+    }
+
+    private static function awaitFailedMessage(AMQPChannel $channel, float $timeout): ?AMQPMessage
+    {
+        $message = null;
+        $channel->basic_qos(0, 1, false);
+        $tag = $channel->basic_consume('critical.failed', '', false, false, false, false, static function (AMQPMessage $received) use (&$message): void {
+            $message = $received;
+        });
+        $deadline = hrtime(true) / 1e9 + $timeout;
+        try {
+            while ($message === null && ($remaining = $deadline - hrtime(true) / 1e9) > 0.0) {
+                try {
+                    $channel->wait(null, false, min($remaining, 1.0));
+                } catch (AMQPTimeoutException) {
+                    // Keep servicing heartbeat until the original deadline.
+                }
+            }
+        } finally {
+            $channel->basic_cancel($tag);
+        }
+
+        return $message;
     }
 
     private static function envelope(): BrokerEnvelope

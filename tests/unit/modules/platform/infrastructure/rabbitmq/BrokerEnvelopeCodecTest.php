@@ -57,6 +57,15 @@ final class BrokerEnvelopeCodecTest extends Unit
         self::assertSame(self::OUTBOX_ID, (new BrokerEnvelopeCodec())->decode($message)->outboxId);
     }
 
+    public function testAcceptsOnlyTypedQuorumDeliveryCountersWithoutChangingEnvelope(): void
+    {
+        $message = new AMQPMessage(self::body(), self::properties() + [
+            'application_headers' => new AMQPTable(['x-delivery-count' => 1, 'x-acquired-count' => 2]),
+        ]);
+        $codec = new BrokerEnvelopeCodec();
+        self::assertSame(self::body(), $codec->encode($codec->decode($message))->getBody());
+    }
+
     /** @dataProvider invalidMessages */
     public function testRejectsInvalidWireDataWithSafeError(AMQPMessage $message): void
     {
@@ -82,6 +91,13 @@ final class BrokerEnvelopeCodecTest extends Unit
         yield 'unapproved headers' => [new AMQPMessage(self::body(), self::properties() + [
             'application_headers' => new AMQPTable(['message_type' => 'synthetic']),
         ])];
+        foreach (['x-delivery-count', 'x-acquired-count'] as $header) {
+            foreach ([-1, '1'] as $value) {
+                yield $header . '-' . get_debug_type($value) => [new AMQPMessage(self::body(), self::properties() + [
+                    'application_headers' => new AMQPTable([$header => $value]),
+                ])];
+            }
+        }
         foreach (array_keys(self::fields()) as $key) {
             $fields = self::fields();
             unset($fields[$key]);
