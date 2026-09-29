@@ -42,6 +42,9 @@ $config = [
         'platform-messaging' => [
             'class' => \modules\platform\presentation\console\MessagingController::class,
         ],
+        'platform-worker' => [
+            'class' => \modules\platform\presentation\console\CriticalWorkerController::class,
+        ],
 //        'fixture' => [ // Fixture generation command line.
 //            'class' => 'yii\faker\FixtureController',
 //        ],

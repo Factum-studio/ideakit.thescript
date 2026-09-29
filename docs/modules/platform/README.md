@@ -1,6 +1,6 @@
 # Platform
 
-`Platform` — технический модуль монолита для надёжной доставки фоновых команд и исходящих сообщений. Реализованы PostgreSQL-таблица `outbox_messages`, типизированная запись, RabbitMQ-транспорт и ограниченный outbox relay. Таблица хранит намерение доставки и техническое состояние; бизнес-состояние остаётся у модуля-владельца сообщения.
+`Platform` — технический модуль монолита для надёжной доставки фоновых команд и исходящих сообщений. Реализованы PostgreSQL-таблица `outbox_messages`, типизированная запись, RabbitMQ-транспорт, ограниченный outbox relay и CLI worker для очереди `critical`. Таблица хранит намерение доставки и техническое состояние; бизнес-состояние остаётся у модуля-владельца сообщения.
 
 ## Реализованная схема
 
@@ -16,7 +16,7 @@ PostgreSQL проверяет допустимые назначения и со�
 
 Совпадающий повтор возвращает прежний ID без изменения строки, включая состояние доставки, correlation ID и время. Повтор распознаётся и после очистки payload по сохранённому hash и неизменяемым метаданным. Другой эффект с тем же ключом отклоняется. `OutboxWriteException` различает `invalid_intent`, `unsupported_route`, `transaction_required`, `idempotency_conflict` и `persistence_failure`; публичный текст не содержит SQL или входных данных. Ошибку БД writer не повторяет: rollback и повтор всего сценария принадлежат вызывающему коду.
 
-Запись не отправляет сообщения и не обращается к внешним системам. Публикация выполняется отдельным relay; worker, восстановление lease, очистка payload и Telegram webhook ещё не реализованы.
+Запись не отправляет сообщения и не обращается к внешним системам. Публикация выполняется отдельным relay; восстановление lease, очистка payload и Telegram webhook ещё не реализованы.
 
 ## RabbitMQ: конфигурация и топология
 
@@ -78,13 +78,13 @@ docker compose exec -T -e APP_ENV=test -e TEST_RABBITMQ_HOST=rabbitmq-test -e TE
 
 [`IBrokerPublisher`](../../../modules/platform/application/port/IBrokerPublisher.php) принимает неизменяемый `BrokerEnvelope` и возвращает `BrokerPublishReceipt` только с подтверждённым outbox UUID. Envelope содержит outbox UUID, тип и версию команды, correlation UUID и существующий `TelegramUpdateReceivedPayload` с внутренним UUID update. Writer и его PostgreSQL-транзакция не меняются; publisher не обращается к БД.
 
-[`BrokerEnvelopeCodec`](../../../modules/platform/infrastructure/rabbitmq/BrokerEnvelopeCodec.php) сериализует ровно `outbox_id`, `message_type`, `schema_version`, `correlation_id`, `payload`; payload содержит только `update_id`. UUID канонические, типы проверяются без преобразования, неизвестные поля отклоняются. Ограничения: payload ≤ 1024 байт, envelope ≤ 4096 байт, JSON depth ≤ 16. Malformed JSON, усечённое тело и несовпадение AMQP properties дают `invalid_envelope`. AMQP `message_id` и `correlation_id` совпадают с envelope; `content_type=application/json`, `delivery_mode=2`. Из headers допускаются только неотрицательные целочисленные quorum counters `x-delivery-count` и `x-acquired-count`; они не входят в envelope. Codec проверяет техническую структуру, а не разрешение типа/версии для dispatch; прикладной registry ещё не реализован.
+[`BrokerEnvelopeCodec`](../../../modules/platform/infrastructure/rabbitmq/BrokerEnvelopeCodec.php) сериализует ровно `outbox_id`, `message_type`, `schema_version`, `correlation_id`, `payload`; payload содержит только `update_id`. UUID канонические, типы проверяются без преобразования, неизвестные поля отклоняются. Ограничения: payload ≤ 1024 байт, envelope ≤ 4096 байт, JSON depth ≤ 16. Malformed JSON, усечённое тело и несовпадение AMQP properties дают `invalid_envelope`. AMQP `message_id` и `correlation_id` совпадают с envelope; `content_type=application/json`, `delivery_mode=2`. Из headers допускаются только неотрицательные целочисленные quorum counters `x-delivery-count` и `x-acquired-count`; они не входят в envelope. Codec проверяет техническую структуру, а точную пару типа и версии при dispatch проверяет Application registry.
 
 [`RabbitMqPublisher`](../../../modules/platform/infrastructure/rabbitmq/RabbitMqPublisher.php) открывает собственные connection/channel для одной публикации в `ideakit.commands` с ключом `critical`, включает confirms и отправляет persistent message с `mandatory=true`. Успех требует ack без `basic.return`. Return вместе с ack даёт `unroutable`; nack — `nacked`, истечение ограниченного ожидания — `confirm_timeout`, сетевой сбой — `connection_failure`. Публичные исключения не содержат библиотечных деталей или цепочки исходного исключения. Channel и connection закрываются в `finally`; ошибка закрытия не подменяет первоначальный отказ. Конструктор не выполняет I/O.
 
-Автоматических повторов в publisher нет. Два явных вызова с тем же outbox UUID могут создать две доставки с одинаковым `message_id`: это at-least-once, не exactly-once. Confirm доказывает принятие брокером, но не выполнение команды. При потере подтверждения результат может быть неоднозначным; повтор публикации принадлежит relay, идемпотентная обработка — будущему worker.
+Автоматических повторов в publisher нет. Два явных вызова с тем же outbox UUID могут создать две доставки с одинаковым `message_id`: это at-least-once, не exactly-once. Confirm доказывает принятие брокером, но не выполнение команды. При потере подтверждения результат может быть неоднозначным; повтор публикации принадлежит relay, идемпотентный сохраняемый эффект — обработчику worker.
 
-Publisher не обращается к PostgreSQL и не выполняет Telegram update. Постоянный worker, registry и диспетчеризация прикладных обработчиков относятся к #43-5.
+Publisher не обращается к PostgreSQL и не выполняет Telegram update. CLI worker и явный registry реализованы отдельно; производственный Telegram-обработчик пока отсутствует.
 
 [Codec unit-тест](../../../tests/unit/modules/platform/infrastructure/rabbitmq/BrokerEnvelopeCodecTest.php) проверяет wire contract и границы. [Confirmation unit-тест](../../../tests/unit/modules/platform/infrastructure/rabbitmq/PublishConfirmationTest.php) проверяет ack, return+ack, nack, потерю соединения и конечный deadline без продления входящими событиями. Broker integration-тест дополнительно проверяет реальную публикацию и её properties, два явных вызова без скрытого повтора, unroutable return+ack и закрытый локальный порт.
 
@@ -100,7 +100,7 @@ Publisher использует [ограниченный StreamIO](../../../modu
 
 Channel ограничивает тело 4096 байтами. Для malformed или oversized сообщения `message()` возвращает `invalid_envelope`, но доставка остаётся доступной для окончательного `reject()`. Отклонённое сообщение поступает в `critical.failed` с сохранённым телом и broker death metadata; автоматического обратного маршрута нет. При временном отсутствии error binding policy удерживает сообщение до успешной повторной DLX-доставки. Transport не выполняет обработчики и не принимает прикладное решение для неизвестного типа/версии.
 
-[Broker integration-тест](../../../tests/integration/modules/platform/infrastructure/rabbitmq/RabbitMqTransportTest.php) проверяет manual ack, prefetch, redelivery после закрытия, запрет повторного settlement, DLX и восстановление error route с конечным ожиданием broker retry. Malformed/oversized сообщения проверяются на реальном брокере без дублирования всех codec-границ. [Delivery unit-тест](../../../tests/unit/modules/platform/infrastructure/rabbitmq/RabbitMqDeliveryTest.php) детерминированно проверяет ошибку отправки ack/reject без утечки библиотечного контекста. Worker, прикладные retries и registry обработчиков остаются следующими задачами.
+[Broker integration-тест](../../../tests/integration/modules/platform/infrastructure/rabbitmq/RabbitMqTransportTest.php) проверяет manual ack, prefetch, redelivery после закрытия, запрет повторного settlement, DLX и восстановление error route с конечным ожиданием broker retry. Malformed/oversized сообщения проверяются на реальном брокере без дублирования всех codec-границ. [Delivery unit-тест](../../../tests/unit/modules/platform/infrastructure/rabbitmq/RabbitMqDeliveryTest.php) детерминированно проверяет ошибку отправки ack/reject без утечки библиотечного контекста. Прикладные retries и производственный Telegram-обработчик относятся к следующим задачам.
 
 ## Outbox relay
 
@@ -132,13 +132,29 @@ docker compose exec -T -e APP_ENV=test -e APP_DEBUG=false -e 'DB_DSN=pgsql:host=
 docker compose exec -T -e APP_ENV=test -e APP_DEBUG=false -e 'DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' php-fpm php yii platform-outbox/relay --limit=1
 ```
 
-До #43-6 зависший `PROCESSING`, включая истёкший lease, не восстанавливается: повторный запуск этого relay его не подхватит. Также не выбираются `TELEGRAM`, `DELIVERED` и `FAILED`. Scheduler, cleanup и recovery command не реализованы; постоянный consumer и прикладная идемпотентность относятся к #43-5. Готовность relay не означает готовность Telegram-бота.
+До #43-6 зависший `PROCESSING`, включая истёкший lease, не восстанавливается: повторный запуск этого relay его не подхватит. Также не выбираются `TELEGRAM`, `DELIVERED` и `FAILED`. Scheduler, cleanup и recovery command не реализованы. Готовность relay и инфраструктурного worker не означает готовность Telegram-бота.
 
 Проверки: [config unit-тест](../../../tests/unit/modules/platform/infrastructure/OutboxRelayConfigTest.php), [DI/console](../../../tests/integration/config/PlatformOutboxRelayContainerBindingsTest.php), [PostgreSQL store](../../../tests/integration/modules/platform/infrastructure/DbOutboxRelayStoreTest.php), [relay integration](../../../tests/integration/modules/platform/infrastructure/OutboxRelayIntegrationTest.php) и [сквозной PG/RabbitMQ тест](../../../tests/integration/modules/platform/infrastructure/OutboxRelayRabbitMqTest.php). Они подтверждают commit до публикации, rollback, fencing, ограниченные повторы с прежним ID, остановку после сбоя фиксации, `DELIVERED` по confirm и `FAILED` по return. Сквозной тест находится вне transport-only suite `make test-rabbitmq` и требует подготовленной `ideakit_test` и явного test vhost:
 
 ```bash
 docker compose exec -T -e APP_ENV=test -e APP_DEBUG=false -e TEST_RABBITMQ_HOST=rabbitmq-test -e TEST_RABBITMQ_PORT=5672 -e TEST_RABBITMQ_USER=transport-test -e TEST_RABBITMQ_PASSWORD=local-transport-test-only -e TEST_RABBITMQ_VHOST=ideakit_transport_test php-fpm vendor/bin/codecept run integration tests/integration/modules/platform/infrastructure/OutboxRelayRabbitMqTest.php --no-colors
 ```
+
+## Critical worker
+
+[`RunCriticalWorkerHandler`](../../../modules/platform/application/handler/RunCriticalWorkerHandler.php) получает одну команду за раз из `critical`, выбирает обработчик только по точной паре `message_type/schema_version` и подтверждает доставку после завершённого сохраняемого эффекта или проверенного `ALREADY_COMPLETED`. Явный отказ обработчика, неизвестный контракт и повреждённый envelope отклоняются без requeue; RabbitMQ направляет их в `critical.failed`. Неожиданная ошибка или незавершённая PostgreSQL-транзакция не превращаются в ACK: соединение закрывается, а сообщение допускает повторную доставку. Worker не открывает транзакцию и не фиксирует эффект за обработчика. `outbox_messages.DELIVERED` по-прежнему означает только принятие брокером.
+
+Linux CLI runtime ограничивает число сообщений, общее время, время обработчика, broker I/O и память; SIGTERM, SIGINT и SIGQUIT останавливают запуск после текущей доставки, когда её можно безопасно подтвердить. Подписка использует manual ack и `prefetch=1`. [`CriticalWorkerController`](../../../modules/platform/presentation/console/CriticalWorkerController.php) предоставляет `platform-worker/critical` с `--limit` (1–10000) и `--maxRuntime` (1–3600 секунд). Ошибка параметров даёт exit 2, операционная ошибка — exit 1 с безопасным кодом, штатное завершение — exit 0 и числовые счётчики. `php yii help platform-worker/critical` проверен без подключения к брокеру.
+
+Production [registry](../../../modules/platform/application/route/BackgroundCommandRegistry.php) сейчас намеренно пуст: до реализации Telegram-обработчика в #39 запуск `platform-worker/critical` возвращает `handler_missing` **до** подписки на очередь. Команда не включена в Compose startup, Make start или healthchecks. Сквозной тест использует только отдельную [test composition](../../../tests/bin/critical-worker.php) и [идемпотентный test handler](../../../tests/fixtures/platform/PersistedTestCommandHandler.php), который сохраняет синтетический эффект в существующем outbox. Это не production-обработка Telegram update.
+
+Проверены [DI/CLI-тест](../../../tests/integration/config/PlatformCriticalWorkerContainerBindingsTest.php) и [PostgreSQL/RabbitMQ integration-тест](../../../tests/integration/modules/platform/infrastructure/CriticalWorkerRabbitMqTest.php): writer → relay confirm → ACK, повтор после crash между commit и ACK, явный дубль, DLQ, неожиданная ошибка, сигнал, hard timeout и откат незавершённой транзакции. Тест выполнялся только на `ideakit_test` и `ideakit_transport_test`:
+
+```bash
+docker compose exec -T -e APP_ENV=test -e APP_DEBUG=false -e 'TEST_DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' -e TEST_RABBITMQ_HOST=rabbitmq-test -e TEST_RABBITMQ_PORT=5672 -e TEST_RABBITMQ_USER=transport-test -e TEST_RABBITMQ_PASSWORD=local-transport-test-only -e TEST_RABBITMQ_VHOST=ideakit_transport_test php-fpm vendor/bin/codecept run integration tests/integration/modules/platform/infrastructure/CriticalWorkerRabbitMqTest.php --no-colors
+```
+
+Worker не делает reconnect/retry внутри процесса, не является daemon и не гарантирует exactly-once. Реальные прикладные действия, Telegram webhook и обработчик, автоматический запуск, scheduler и восстановление зависших outbox-записей остаются вне этого среза.
 
 ## Проверка
 
