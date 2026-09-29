@@ -25,8 +25,12 @@ final class RabbitMqReceiver implements IBrokerReceiver
         private readonly RabbitMqConnectionFactory $factory,
         private readonly BrokerEnvelopeCodec $codec,
         private readonly float $pollTimeout,
+        private readonly ?int $maximumHandlerSeconds = null,
     ) {
         self::validateTimeout($pollTimeout);
+        if ($maximumHandlerSeconds !== null && ($maximumHandlerSeconds < 1 || $maximumHandlerSeconds > 30)) {
+            throw new BrokerTransportException(BrokerTransportErrorCode::CONFIGURATION_INVALID);
+        }
     }
 
     public function receive(float $timeoutSeconds): ?IBrokerDelivery
@@ -38,6 +42,7 @@ final class RabbitMqReceiver implements IBrokerReceiver
         try {
             if ($this->channel === null) {
                 $this->connection = $this->factory->connect();
+                $this->validateHeartbeat($timeoutSeconds);
                 $this->channel = $this->connection->channel();
                 $this->channel->setBodySizeLimit(4096);
                 $this->channel->basic_qos(0, 1, false);
@@ -45,6 +50,7 @@ final class RabbitMqReceiver implements IBrokerReceiver
                     $this->pending = new RabbitMqDelivery($message, $this->codec, $this->close(...));
                 });
             }
+            $this->validateHeartbeat($timeoutSeconds);
             $deadline = hrtime(true) / 1e9 + $timeoutSeconds;
             while ($this->pending === null) {
                 if (!$this->channel->is_open() || !$this->channel->is_consuming()) {
@@ -64,14 +70,16 @@ final class RabbitMqReceiver implements IBrokerReceiver
             $this->pending = null;
 
             return $delivery;
-        } catch (Exception) {
+        } catch (Exception $exception) {
             try {
                 $this->close();
             } catch (BrokerTransportException) {
                 // Cleanup must not replace the original receive failure.
             }
 
-            throw new BrokerTransportException(BrokerTransportErrorCode::CONNECTION_FAILURE);
+            throw new BrokerTransportException($exception instanceof BrokerTransportException
+                && $exception->errorCode === BrokerTransportErrorCode::CONFIGURATION_INVALID
+                ? BrokerTransportErrorCode::CONFIGURATION_INVALID : BrokerTransportErrorCode::CONNECTION_FAILURE);
         }
     }
 
@@ -103,6 +111,19 @@ final class RabbitMqReceiver implements IBrokerReceiver
     private static function validateTimeout(float $timeout): void
     {
         if (!is_finite($timeout) || $timeout <= 0.0 || $timeout > 30.0) {
+            throw new BrokerTransportException(BrokerTransportErrorCode::CONFIGURATION_INVALID);
+        }
+    }
+
+    private function validateHeartbeat(float $receiveTimeout): void
+    {
+        if ($this->maximumHandlerSeconds === null) {
+            return;
+        }
+        $heartbeat = $this->connection?->getHeartbeat() ?? 0;
+        if ($heartbeat <= 0 || 2 * $this->maximumHandlerSeconds + 2 > $heartbeat
+            || $receiveTimeout > $heartbeat / 2 || $this->pollTimeout > $heartbeat / 2
+        ) {
             throw new BrokerTransportException(BrokerTransportErrorCode::CONFIGURATION_INVALID);
         }
     }

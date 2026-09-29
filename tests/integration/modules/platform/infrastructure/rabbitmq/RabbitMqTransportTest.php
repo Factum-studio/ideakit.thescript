@@ -225,7 +225,7 @@ final class RabbitMqTransportTest extends Unit
             );
             $publisher->publish($first);
             $publisher->publish($second);
-            $receiver = new RabbitMqReceiver($factory, $codec, 0.1);
+            $receiver = new RabbitMqReceiver($factory, $codec, 0.1, 4);
             try {
                 $delivery = $receiver->receive(5.0);
                 self::assertNotNull($delivery);
@@ -277,6 +277,36 @@ final class RabbitMqTransportTest extends Unit
                 $replacement->close();
             }
         });
+    }
+
+    /** @dataProvider incompatibleWorkerHeartbeat */
+    public function testWorkerHeartbeatGuardRefusesBeforeSubscribe(int $heartbeat, float $poll): void
+    {
+        $this->withTopology(function (AMQPChannel $channel) use ($heartbeat, $poll): void {
+            $factory = new RabbitMqConnectionFactory(new RabbitMqConnectionConfig(
+                $_ENV['TEST_RABBITMQ_HOST'],
+                (int) $_ENV['TEST_RABBITMQ_PORT'],
+                $_ENV['TEST_RABBITMQ_USER'],
+                $_ENV['TEST_RABBITMQ_PASSWORD'],
+                $_ENV['TEST_RABBITMQ_VHOST'],
+                heartbeat: $heartbeat,
+            ));
+            $receiver = new RabbitMqReceiver($factory, new BrokerEnvelopeCodec(), $poll, 4);
+            try {
+                self::assertTransportError(BrokerTransportErrorCode::CONFIGURATION_INVALID, static fn () => $receiver->receive(1.0));
+                [, , $consumers] = $channel->queue_declare('critical', true);
+                self::assertSame(0, $consumers);
+            } finally {
+                $receiver->close();
+            }
+        });
+    }
+
+    /** @return iterable<string, array{int, float}> */
+    public static function incompatibleWorkerHeartbeat(): iterable
+    {
+        yield 'negotiated heartbeat too short' => [2, 0.1];
+        yield 'poll exceeds negotiated heartbeat half' => [10, 5.1];
     }
 
     public function testRejectDeadLettersWithBrokerMetadataAndNoAutomaticReturn(): void

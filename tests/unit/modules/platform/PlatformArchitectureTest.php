@@ -19,8 +19,11 @@ final class PlatformArchitectureTest extends Unit
             'application' => [
                 'yii\\', 'Yii', 'ActiveRecord', 'AMQP', 'PhpAmqpLib\\',
                 'modules\\platform\\infrastructure\\', 'modules\\telegram\\',
+                'pcntl_', 'posix_', 'getenv', 'memory_get_usage', 'ini_set',
             ],
-            'infrastructure' => ['modules\\telegram\\'],
+            'infrastructure' => ['modules\\telegram\\', 'modules\\users\\', 'core\\'],
+            'infrastructure/process' => ['yii\\', 'Yii', 'PDO', 'PhpAmqpLib\\'],
+            'infrastructure/logging' => ['yii\\db\\', 'PDO', 'PhpAmqpLib\\'],
             'infrastructure/rabbitmq' => [
                 'yii\\db\\', 'ActiveRecord', 'PDO', 'core\\', 'modules\\users\\',
                 'modules\\platform\\infrastructure\\db\\',

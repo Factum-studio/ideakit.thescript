@@ -14,7 +14,7 @@ RUN set -eux; \
     apt-get install --no-install-recommends --yes \
         libfcgi-bin \
         libpq-dev; \
-    docker-php-ext-install -j"$(nproc)" pdo_pgsql sockets; \
+    docker-php-ext-install -j"$(nproc)" pdo_pgsql sockets pcntl; \
     apt-mark manual libfcgi-bin libpq5; \
     apt-get purge --auto-remove --yes libpq-dev; \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
