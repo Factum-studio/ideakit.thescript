@@ -28,12 +28,21 @@ use core\infrastructure\repository\DbUserRepository;
 use core\infrastructure\security\YiiSecurityService;
 use core\security\JwtMiddleware;
 use modules\platform\application\handler\DeclareMessagingTopologyHandler;
+use modules\platform\application\handler\RelayOutboxHandler;
+use modules\platform\application\policy\OutboxRetryPolicy;
+use modules\platform\application\port\IOutboxRelayStore;
 use modules\platform\application\port\IBrokerPublisher;
 use modules\platform\application\port\IBrokerReceiver;
 use modules\platform\application\port\IBrokerTopology;
 use modules\platform\application\port\IOutboxWriter;
 use modules\platform\application\route\OutboxRouteRegistry;
 use modules\platform\infrastructure\db\DbOutboxWriter;
+use modules\platform\infrastructure\config\OutboxRelayConfig;
+use modules\platform\infrastructure\db\DbOutboxRelayStore;
+use modules\platform\infrastructure\db\OutboxRelayRowMapper;
+use modules\platform\infrastructure\identity\RamseyOutboxLeaseTokenGenerator;
+use modules\platform\infrastructure\random\SecureRetryJitter;
+use modules\platform\presentation\console\OutboxRelayController;
 use modules\platform\infrastructure\rabbitmq\BrokerEnvelopeCodec;
 use modules\platform\infrastructure\rabbitmq\RabbitMqConnectionConfig;
 use modules\platform\infrastructure\rabbitmq\RabbitMqConnectionFactory;
@@ -52,6 +61,7 @@ use modules\users\infrastructure\identity\RamseyTelegramIdentityProfileIdGenerat
 use modules\users\infrastructure\mapper\TelegramIdentityProfileMapper;
 use modules\users\infrastructure\repository\DbTelegramIdentityProfileRepository;
 use yii\db\Connection;
+use yii\di\Container;
 
 $container = Yii::$container;
 
@@ -164,6 +174,41 @@ $container->set(IBrokerReceiver::class, static function () use ($container): IBr
 
 $container->set(DeclareMessagingTopologyHandler::class, static function () use ($container): DeclareMessagingTopologyHandler {
     return new DeclareMessagingTopologyHandler($container->get(IBrokerTopology::class));
+});
+
+// ---------- Platform relay ----------
+$container->setSingleton(OutboxRelayConfig::class, static function (): OutboxRelayConfig {
+    return require __DIR__ . '/outbox_relay.php';
+});
+
+$container->setSingleton(IOutboxRelayStore::class, static function (): IOutboxRelayStore {
+    $db = Yii::$app->get('db');
+    if (!$db instanceof Connection) {
+        throw new RuntimeException('Application database connection is not configured.');
+    }
+
+    return new DbOutboxRelayStore($db, new OutboxRelayRowMapper(new OutboxRouteRegistry()), new RamseyOutboxLeaseTokenGenerator());
+});
+
+$container->set(RelayOutboxHandler::class, static function () use ($container): RelayOutboxHandler {
+    $settings = $container->get(OutboxRelayConfig::class)->settings;
+
+    return new RelayOutboxHandler(
+        $container->get(IOutboxRelayStore::class),
+        $container->get(IBrokerPublisher::class),
+        $settings,
+        new OutboxRetryPolicy($settings, new SecureRetryJitter()),
+    );
+});
+
+$container->set(OutboxRelayController::class, static function (Container $di, array $params, array $config): OutboxRelayController {
+    return new OutboxRelayController(
+        $params[0],
+        $params[1],
+        $di->get(RelayOutboxHandler::class),
+        $di->get(OutboxRelayConfig::class)->defaultLimit,
+        $config,
+    );
 });
 
 // ---------- UseCase ----------

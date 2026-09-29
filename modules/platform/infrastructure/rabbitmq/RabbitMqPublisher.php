@@ -27,7 +27,7 @@ final class RabbitMqPublisher implements IBrokerPublisher
     public function publish(BrokerEnvelope $envelope): BrokerPublishReceipt
     {
         $message = $this->codec->encode($envelope);
-        $connection = $this->factory->connect();
+        $connection = $this->factory->connectForPublication();
         $channel = null;
         $failure = null;
         try {
@@ -45,8 +45,8 @@ final class RabbitMqPublisher implements IBrokerPublisher
             });
             $channel->basic_publish($message, 'ideakit.commands', 'critical', true);
             $confirmation->await(
-                static function (float $remaining) use ($channel): void {
-                    $channel->wait(null, false, $remaining);
+                static function (float $remaining) use ($channel, $connection): void {
+                    $connection->waitForConfirmation($channel, $remaining);
                 },
                 static fn (): float => hrtime(true) / 1e9,
                 $this->confirmTimeout,

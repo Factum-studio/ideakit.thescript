@@ -36,6 +36,9 @@ $config = [
     ],
     'params' => $params,
     'controllerMap' => [
+        'platform-outbox' => [
+            'class' => \modules\platform\presentation\console\OutboxRelayController::class,
+        ],
         'platform-messaging' => [
             'class' => \modules\platform\presentation\console\MessagingController::class,
         ],

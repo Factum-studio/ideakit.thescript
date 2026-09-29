@@ -20,6 +20,27 @@ final class RabbitMqConnectionFactory
     /** @throws BrokerTransportException */
     public function connect(): AbstractConnection
     {
+        try {
+            return AMQPConnectionFactory::create($this->connectionConfiguration());
+        } catch (Exception) {
+            // Library exceptions can expose connection parameters through their context.
+            throw new BrokerTransportException(BrokerTransportErrorCode::CONNECTION_FAILURE);
+        }
+    }
+
+    public function connectForPublication(): PublisherConnection
+    {
+        $stream = new PublisherStreamIo($this->config, $this->config->publicationTimeoutSeconds());
+        try {
+            return new PublisherConnection($this->connectionConfiguration(), $stream);
+        } catch (Exception) {
+            $stream->close();
+            throw new BrokerTransportException(BrokerTransportErrorCode::CONNECTION_FAILURE);
+        }
+    }
+
+    private function connectionConfiguration(): AMQPConnectionConfig
+    {
         $connection = new AMQPConnectionConfig();
         $connection->setHost($this->config->host);
         $connection->setPort($this->config->port);
@@ -32,11 +53,7 @@ final class RabbitMqConnectionFactory
         $connection->setReadTimeout($this->config->readTimeout);
         $connection->setWriteTimeout($this->config->writeTimeout);
         $connection->setDebugPackets(false);
-        try {
-            return AMQPConnectionFactory::create($connection);
-        } catch (Exception) {
-            // Library exceptions can expose connection parameters through their context.
-            throw new BrokerTransportException(BrokerTransportErrorCode::CONNECTION_FAILURE);
-        }
+
+        return $connection;
     }
 }

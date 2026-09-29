@@ -13,6 +13,7 @@ endif
 
 .PHONY: help config build start stop restart status logs logs-follow requirements console diagnose test-migrate test-db-create test-db-refresh coverage-generate coverage-download-report
 .PHONY: rabbitmq-policy rabbitmq-topology rabbitmq-check test-rabbitmq
+.PHONY: outbox-relay
 
 help:
 	@echo "Available targets:"
@@ -32,6 +33,7 @@ help:
 	@echo "  rabbitmq-topology  Declare the configured application topology"
 	@echo "  rabbitmq-check     Verify local broker topology and effective policy"
 	@echo "  test-rabbitmq      Prepare the isolated broker and run transport tests"
+	@echo "  outbox-relay       Publish one bounded batch from the configured outbox"
 	@echo "  test-migrate  Test migrate"
 	@echo "  test-db-create  Test db create"
 	@echo "  test-db-refresh  Test db refresh"
@@ -83,6 +85,9 @@ rabbitmq-policy:
 
 rabbitmq-topology:
 	$(COMPOSE) exec -T php-fpm php yii platform-messaging/declare
+
+outbox-relay:
+	$(COMPOSE) exec -T php-fpm php yii platform-outbox/relay
 
 rabbitmq-check:
 	$(COMPOSE) exec -T $(BROKER_SERVICE) su-exec rabbitmq sh /etc/ideakit-rabbitmq/apply-policy.sh --check

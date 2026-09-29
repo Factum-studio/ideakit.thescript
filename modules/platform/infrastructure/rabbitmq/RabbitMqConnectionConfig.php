@@ -41,6 +41,12 @@ final class RabbitMqConnectionConfig
         }
     }
 
+    public function publicationTimeoutSeconds(): float
+    {
+        return 4 * $this->connectionTimeout + 3 * $this->channelRpcTimeout
+            + 10 * max($this->readTimeout, $this->writeTimeout) + $this->confirmTimeout;
+    }
+
     /**
      * @param array<string, mixed> $environment
      * @throws BrokerTransportException
