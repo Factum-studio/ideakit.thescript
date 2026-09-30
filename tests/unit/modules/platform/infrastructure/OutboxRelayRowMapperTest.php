@@ -155,9 +155,23 @@ final class OutboxRelayRowMapperTest extends Unit
             $json,
             1,
             new DateTimeImmutable('2026-09-28T12:00:00+05:00'),
-            OutboxRelayDecision::failed(OutboxRelayError::ATTEMPT_LIMIT_REACHED),
+            OutboxRelayDecision::failed(OutboxRelayError::LEASE_EXPIRED),
             new DateTimeImmutable('2026-09-28T12:00:01+05:00'),
         ));
+    }
+
+    public function testRejectsCompletedHistoryWhenRetryBudgetRemains(): void
+    {
+        $this->expectException(OutboxRelayException::class);
+        $this->expectExceptionMessage('invalid_message');
+
+        (new OutboxRelayRowMapper(new OutboxRouteRegistry()))->completeExpiredHistory(
+            json_encode(self::history(), JSON_THROW_ON_ERROR),
+            1,
+            new DateTimeImmutable('2026-09-28T12:00:00+05:00'),
+            OutboxRelayDecision::retry(OutboxRelayError::LEASE_EXPIRED, 15),
+            new DateTimeImmutable('2026-09-28T12:00:01+05:00'),
+        );
     }
 
     /** @dataProvider invalidExpiredHistories */

@@ -113,7 +113,9 @@ final class OutboxRelayRowMapper
         $attempts = $history['attempts'];
         $lastAttempt = $attempts === [] ? 0 : $attempts[count($attempts) - 1]['attempt_no'];
         if ($lastAttempt === $attemptCount) {
-            if ($decision->status !== 'FAILED' || $decision->error !== OutboxRelayError::ATTEMPT_LIMIT_REACHED) {
+            if ($decision->status !== 'FAILED' || !in_array($decision->error, [
+                OutboxRelayError::LEASE_EXPIRED, OutboxRelayError::ATTEMPT_LIMIT_REACHED,
+            ], true)) {
                 throw new OutboxRelayException(OutboxRelayError::INVALID_MESSAGE);
             }
 

@@ -28,6 +28,7 @@ use core\infrastructure\repository\DbUserRepository;
 use core\infrastructure\security\YiiSecurityService;
 use core\security\JwtMiddleware;
 use modules\platform\application\handler\DeclareMessagingTopologyHandler;
+use modules\platform\application\handler\RecoverExpiredOutboxHandler;
 use modules\platform\application\handler\RelayOutboxHandler;
 use modules\platform\application\handler\RunCriticalWorkerHandler;
 use modules\platform\application\port\IWorkerExecutionGuard;
@@ -35,6 +36,7 @@ use modules\platform\application\port\IWorkerRuntime;
 use modules\platform\application\route\BackgroundCommandRegistry;
 use modules\platform\application\policy\OutboxRetryPolicy;
 use modules\platform\application\port\IOutboxRelayStore;
+use modules\platform\application\port\IOutboxRecoveryStore;
 use modules\platform\application\port\IBrokerPublisher;
 use modules\platform\application\port\IBrokerReceiver;
 use modules\platform\application\port\IBrokerTopology;
@@ -45,6 +47,7 @@ use modules\platform\infrastructure\db\DbWorkerExecutionGuard;
 use modules\platform\infrastructure\config\CriticalWorkerConfig;
 use modules\platform\infrastructure\config\OutboxRelayConfig;
 use modules\platform\infrastructure\db\DbOutboxRelayStore;
+use modules\platform\infrastructure\db\DbOutboxRecoveryStore;
 use modules\platform\infrastructure\db\OutboxRelayRowMapper;
 use modules\platform\infrastructure\identity\RamseyOutboxLeaseTokenGenerator;
 use modules\platform\infrastructure\random\SecureRetryJitter;
@@ -52,6 +55,7 @@ use modules\platform\infrastructure\logging\YiiWorkerLogger;
 use modules\platform\infrastructure\process\PcntlWorkerRuntime;
 use modules\platform\presentation\console\CriticalWorkerController;
 use modules\platform\presentation\console\OutboxRelayController;
+use modules\platform\presentation\console\OutboxMaintenanceController;
 use modules\platform\infrastructure\rabbitmq\BrokerEnvelopeCodec;
 use modules\platform\infrastructure\rabbitmq\RabbitMqConnectionConfig;
 use modules\platform\infrastructure\rabbitmq\RabbitMqConnectionFactory;
@@ -216,6 +220,37 @@ $container->set(OutboxRelayController::class, static function (Container $di, ar
         $params[0],
         $params[1],
         $di->get(RelayOutboxHandler::class),
+        $di->get(OutboxRelayConfig::class)->defaultLimit,
+        $config,
+    );
+});
+
+$container->setSingleton(IOutboxRecoveryStore::class, static function () use ($container): IOutboxRecoveryStore {
+    $db = Yii::$app->get('db');
+    if (!$db instanceof Connection) {
+        throw new RuntimeException('Application database connection is not configured.');
+    }
+    $settings = $container->get(OutboxRelayConfig::class)->settings;
+
+    return new DbOutboxRecoveryStore(
+        $db,
+        new OutboxRelayRowMapper(new OutboxRouteRegistry()),
+        new OutboxRetryPolicy($settings, new SecureRetryJitter()),
+    );
+});
+
+$container->set(RecoverExpiredOutboxHandler::class, static function () use ($container): RecoverExpiredOutboxHandler {
+    return new RecoverExpiredOutboxHandler(
+        $container->get(IOutboxRecoveryStore::class),
+        $container->get(OutboxRelayConfig::class)->settings,
+    );
+});
+
+$container->set(OutboxMaintenanceController::class, static function (Container $di, array $params, array $config): OutboxMaintenanceController {
+    return new OutboxMaintenanceController(
+        $params[0],
+        $params[1],
+        $di->get(RecoverExpiredOutboxHandler::class),
         $di->get(OutboxRelayConfig::class)->defaultLimit,
         $config,
     );

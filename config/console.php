@@ -39,6 +39,9 @@ $config = [
         'platform-outbox' => [
             'class' => \modules\platform\presentation\console\OutboxRelayController::class,
         ],
+        'platform-outbox-maintenance' => [
+            'class' => \modules\platform\presentation\console\OutboxMaintenanceController::class,
+        ],
         'platform-messaging' => [
             'class' => \modules\platform\presentation\console\MessagingController::class,
         ],
