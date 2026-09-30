@@ -30,6 +30,12 @@ $config = [
                     'levels' => ['error', 'warning'],
                     'logVars' => [],
                 ],
+                [
+                    'class' => 'yii\log\FileTarget',
+                    'levels' => ['info'],
+                    'categories' => ['platform.outbox_maintenance'],
+                    'logVars' => [],
+                ],
             ],
         ],
         'db' => $db,

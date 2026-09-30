@@ -16,7 +16,7 @@ PostgreSQL проверяет допустимые назначения и со�
 
 Совпадающий повтор возвращает прежний ID без изменения строки, включая состояние доставки, correlation ID и время. Повтор распознаётся и после очистки payload по сохранённому hash и неизменяемым метаданным. Другой эффект с тем же ключом отклоняется. `OutboxWriteException` различает `invalid_intent`, `unsupported_route`, `transaction_required`, `idempotency_conflict` и `persistence_failure`; публичный текст не содержит SQL или входных данных. Ошибку БД writer не повторяет: rollback и повтор всего сценария принадлежат вызывающему коду.
 
-Запись не отправляет сообщения и не обращается к внешним системам. Публикация выполняется отдельным relay; восстановление lease, очистка payload и Telegram webhook ещё не реализованы.
+Запись не отправляет сообщения и не обращается к внешним системам. Публикация выполняется отдельным relay; Telegram webhook ещё не реализован.
 
 ## RabbitMQ: конфигурация и топология
 
@@ -132,13 +132,36 @@ docker compose exec -T -e APP_ENV=test -e APP_DEBUG=false -e 'DB_DSN=pgsql:host=
 docker compose exec -T -e APP_ENV=test -e APP_DEBUG=false -e 'DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' php-fpm php yii platform-outbox/relay --limit=1
 ```
 
-До #43-6 зависший `PROCESSING`, включая истёкший lease, не восстанавливается: повторный запуск этого relay его не подхватит. Также не выбираются `TELEGRAM`, `DELIVERED` и `FAILED`. Scheduler, cleanup и recovery command не реализованы. Готовность relay и инфраструктурного worker не означает готовность Telegram-бота.
+Relay сам не подхватывает зависший `PROCESSING`: истёкший lease обрабатывает отдельная команда восстановления. Relay также не выбирает `TELEGRAM`, `DELIVERED` и `FAILED`. Автоматический scheduler не настроен. Готовность relay и инфраструктурного worker не означает готовность Telegram-бота.
 
 Проверки: [config unit-тест](../../../tests/unit/modules/platform/infrastructure/OutboxRelayConfigTest.php), [DI/console](../../../tests/integration/config/PlatformOutboxRelayContainerBindingsTest.php), [PostgreSQL store](../../../tests/integration/modules/platform/infrastructure/DbOutboxRelayStoreTest.php), [relay integration](../../../tests/integration/modules/platform/infrastructure/OutboxRelayIntegrationTest.php) и [сквозной PG/RabbitMQ тест](../../../tests/integration/modules/platform/infrastructure/OutboxRelayRabbitMqTest.php). Они подтверждают commit до публикации, rollback, fencing, ограниченные повторы с прежним ID, остановку после сбоя фиксации, `DELIVERED` по confirm и `FAILED` по return. Сквозной тест находится вне transport-only suite `make test-rabbitmq` и требует подготовленной `ideakit_test` и явного test vhost:
 
 ```bash
 docker compose exec -T -e APP_ENV=test -e APP_DEBUG=false -e TEST_RABBITMQ_HOST=rabbitmq-test -e TEST_RABBITMQ_PORT=5672 -e TEST_RABBITMQ_USER=transport-test -e TEST_RABBITMQ_PASSWORD=local-transport-test-only -e TEST_RABBITMQ_VHOST=ideakit_transport_test php-fpm vendor/bin/codecept run integration tests/integration/modules/platform/infrastructure/OutboxRelayRabbitMqTest.php --no-colors
 ```
+
+## Обслуживание outbox
+
+[`platform-outbox-maintenance/recover`](../../../modules/platform/presentation/console/OutboxMaintenanceController.php) вручную обрабатывает ограниченный batch истёкших RabbitMQ lease: прерванная попытка получает `RETRY_SCHEDULED` после рассчитанной задержки или видимый `FAILED` при исчерпанном лимите. Повторная публикация остаётся обязанностью relay. Команда `platform-outbox-maintenance/clear-payload` очищает только поле `payload` у `DELIVERED`, когда наступил `payload_expires_at` и прошло не менее 30 дней от `delivered_at`. Batch ограничен 1–100 (по умолчанию 100); строка, hash, ключ идемпотентности, статус и история попыток сохраняются. `FAILED`, `UNKNOWN` и незавершённые отправки не очищаются.
+
+Read-only `platform-outbox-maintenance/status` показывает три счётчика только для назначения `RABBITMQ`: `failed`, `expired_leases` и `due` для готовых `PENDING` / `RETRY_SCHEDULED`. Сбой чтения возвращает ненулевой код, а не нули. Команды не обращаются к брокеру; результаты и ошибки логируются со стабильными техническими кодами и ограниченными счётчиками, без payload и идентификаторов. Автоматический scheduler не настроен.
+
+На пустой `ideakit_test` проверены console help и команды с явным тестовым DSN:
+
+```bash
+docker compose run --rm --no-deps -e APP_ENV=test -e APP_DEBUG=false -e 'DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' -e RABBITMQ_HOST=127.0.0.1 -e RABBITMQ_PORT=1 php-fpm php yii platform-outbox-maintenance/status --interactive=0
+docker compose run --rm --no-deps -e APP_ENV=test -e APP_DEBUG=false -e 'DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' -e RABBITMQ_HOST=127.0.0.1 -e RABBITMQ_PORT=1 php-fpm php yii platform-outbox-maintenance/clear-payload --limit=1 --interactive=0
+```
+
+Для ручной диагностики сначала проверяют `failed` и истёкшие lease через `status`, затем счётчик DLQ. Следующая read-only команда проверена после объявления топологии только в изолированном test vhost; она не потребляет и не подтверждает сообщения:
+
+```bash
+docker compose exec -T rabbitmq-test rabbitmqctl list_queues -p ideakit_transport_test name messages_ready messages_unacknowledged
+```
+
+Ненулевые `FAILED` или `critical.failed` требуют выяснить безопасный машинный код причины, устранить исходную неисправность и передать случай на контролируемый ручной разбор. Автоматический replay `FAILED`/DLQ, ручное изменение строк и повторная отправка из CLI не реализованы. Для managed broker потребуется отдельный эквивалент read-only мониторинга.
+
+[PostgreSQL-тест очистки](../../../tests/integration/modules/platform/infrastructure/OutboxPayloadCleanupIntegrationTest.php) проверяет 30-дневную границу, состояния, конкурентный захват, повтор и идемпотентность writer после очистки. [Тест чтения состояния](../../../tests/integration/modules/platform/infrastructure/OutboxStatusReaderIntegrationTest.php) проверяет счётчики без записи и безопасный отказ; [DI/CLI-тест](../../../tests/integration/config/PlatformOutboxMaintenanceContainerBindingsTest.php) проверяет ленивую композицию и безопасный вывод. Все выполнялись только на `ideakit_test`.
 
 ## Critical worker
 
@@ -154,7 +177,7 @@ Production [registry](../../../modules/platform/application/route/BackgroundComm
 docker compose exec -T -e APP_ENV=test -e APP_DEBUG=false -e 'TEST_DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' -e TEST_RABBITMQ_HOST=rabbitmq-test -e TEST_RABBITMQ_PORT=5672 -e TEST_RABBITMQ_USER=transport-test -e TEST_RABBITMQ_PASSWORD=local-transport-test-only -e TEST_RABBITMQ_VHOST=ideakit_transport_test php-fpm vendor/bin/codecept run integration tests/integration/modules/platform/infrastructure/CriticalWorkerRabbitMqTest.php --no-colors
 ```
 
-Worker не делает reconnect/retry внутри процесса, не является daemon и не гарантирует exactly-once. Реальные прикладные действия, Telegram webhook и обработчик, автоматический запуск, scheduler и восстановление зависших outbox-записей остаются вне этого среза.
+Worker не делает reconnect/retry внутри процесса, не является daemon и не гарантирует exactly-once. Реальные прикладные действия, Telegram webhook и обработчик, автоматический запуск и scheduler остаются вне этого среза.
 
 ## Проверка
 

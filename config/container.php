@@ -28,6 +28,8 @@ use core\infrastructure\repository\DbUserRepository;
 use core\infrastructure\security\YiiSecurityService;
 use core\security\JwtMiddleware;
 use modules\platform\application\handler\DeclareMessagingTopologyHandler;
+use modules\platform\application\handler\ClearDeliveredOutboxPayloadHandler;
+use modules\platform\application\handler\GetOutboxStatusHandler;
 use modules\platform\application\handler\RecoverExpiredOutboxHandler;
 use modules\platform\application\handler\RelayOutboxHandler;
 use modules\platform\application\handler\RunCriticalWorkerHandler;
@@ -37,6 +39,8 @@ use modules\platform\application\route\BackgroundCommandRegistry;
 use modules\platform\application\policy\OutboxRetryPolicy;
 use modules\platform\application\port\IOutboxRelayStore;
 use modules\platform\application\port\IOutboxRecoveryStore;
+use modules\platform\application\port\IOutboxPayloadCleanupStore;
+use modules\platform\application\port\IOutboxStatusReader;
 use modules\platform\application\port\IBrokerPublisher;
 use modules\platform\application\port\IBrokerReceiver;
 use modules\platform\application\port\IBrokerTopology;
@@ -48,10 +52,13 @@ use modules\platform\infrastructure\config\CriticalWorkerConfig;
 use modules\platform\infrastructure\config\OutboxRelayConfig;
 use modules\platform\infrastructure\db\DbOutboxRelayStore;
 use modules\platform\infrastructure\db\DbOutboxRecoveryStore;
+use modules\platform\infrastructure\db\DbOutboxPayloadCleanupStore;
+use modules\platform\infrastructure\db\DbOutboxStatusReader;
 use modules\platform\infrastructure\db\OutboxRelayRowMapper;
 use modules\platform\infrastructure\identity\RamseyOutboxLeaseTokenGenerator;
 use modules\platform\infrastructure\random\SecureRetryJitter;
 use modules\platform\infrastructure\logging\YiiWorkerLogger;
+use modules\platform\infrastructure\logging\YiiOutboxMaintenanceLogger;
 use modules\platform\infrastructure\process\PcntlWorkerRuntime;
 use modules\platform\presentation\console\CriticalWorkerController;
 use modules\platform\presentation\console\OutboxRelayController;
@@ -246,12 +253,41 @@ $container->set(RecoverExpiredOutboxHandler::class, static function () use ($con
     );
 });
 
+$container->setSingleton(IOutboxPayloadCleanupStore::class, static function (): IOutboxPayloadCleanupStore {
+    $db = Yii::$app->get('db');
+    if (!$db instanceof Connection) {
+        throw new RuntimeException('Application database connection is not configured.');
+    }
+
+    return new DbOutboxPayloadCleanupStore($db);
+});
+
+$container->set(ClearDeliveredOutboxPayloadHandler::class, static function () use ($container): ClearDeliveredOutboxPayloadHandler {
+    return new ClearDeliveredOutboxPayloadHandler($container->get(IOutboxPayloadCleanupStore::class));
+});
+
+$container->setSingleton(IOutboxStatusReader::class, static function (): IOutboxStatusReader {
+    $db = Yii::$app->get('db');
+    if (!$db instanceof Connection) {
+        throw new RuntimeException('Application database connection is not configured.');
+    }
+
+    return new DbOutboxStatusReader($db);
+});
+
+$container->set(GetOutboxStatusHandler::class, static function () use ($container): GetOutboxStatusHandler {
+    return new GetOutboxStatusHandler($container->get(IOutboxStatusReader::class));
+});
+
 $container->set(OutboxMaintenanceController::class, static function (Container $di, array $params, array $config): OutboxMaintenanceController {
     return new OutboxMaintenanceController(
         $params[0],
         $params[1],
         $di->get(RecoverExpiredOutboxHandler::class),
         $di->get(OutboxRelayConfig::class)->defaultLimit,
+        $di->get(ClearDeliveredOutboxPayloadHandler::class),
+        $di->get(GetOutboxStatusHandler::class),
+        new YiiOutboxMaintenanceLogger(Yii::$app->getLog()),
         $config,
     );
 });
