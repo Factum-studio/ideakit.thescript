@@ -74,6 +74,8 @@ final class OutboxRetryPolicyTest extends Unit
         yield 'second lower jitter' => [OutboxRelayError::NACKED, 2, 10, false, 'RETRY_SCHEDULED', 30];
         yield 'second upper jitter' => [OutboxRelayError::NACKED, 2, 10, true, 'RETRY_SCHEDULED', 36];
         yield 'capped delay' => [OutboxRelayError::NACKED, 9, 10, true, 'RETRY_SCHEDULED', 900];
+        yield 'expired lease retry' => [OutboxRelayError::LEASE_EXPIRED, 2, 5, true, 'RETRY_SCHEDULED', 36];
+        yield 'expired lease exhausted' => [OutboxRelayError::LEASE_EXPIRED, 5, 5, true, 'FAILED', null];
         foreach ([
             OutboxRelayError::INVALID_MESSAGE, OutboxRelayError::UNSUPPORTED_ROUTE,
             OutboxRelayError::ATTEMPT_LIMIT_REACHED, OutboxRelayError::CONFIRM_MISMATCH,

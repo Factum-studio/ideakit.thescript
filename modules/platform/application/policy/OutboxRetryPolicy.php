@@ -42,6 +42,7 @@ final class OutboxRetryPolicy
         }
         if (!in_array($error, [
             OutboxRelayError::CONNECTION_FAILURE, OutboxRelayError::NACKED, OutboxRelayError::CONFIRM_TIMEOUT,
+            OutboxRelayError::LEASE_EXPIRED,
         ], true) || $attemptNumber >= $maxAttempts) {
             return OutboxRelayDecision::failed($error);
         }

@@ -26,6 +26,7 @@ final class OutboxRelayDecision
     {
         if ($delaySeconds < 1 || $delaySeconds > 3600 || !in_array($error, [
             OutboxRelayError::CONNECTION_FAILURE, OutboxRelayError::NACKED, OutboxRelayError::CONFIRM_TIMEOUT,
+            OutboxRelayError::LEASE_EXPIRED,
         ], true)) {
             throw new OutboxRelayException(OutboxRelayError::UNEXPECTED_FAILURE);
         }

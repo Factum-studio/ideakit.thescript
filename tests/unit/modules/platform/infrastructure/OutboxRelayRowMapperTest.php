@@ -9,6 +9,7 @@ use DateTimeImmutable;
 use modules\platform\application\dto\OutboxRelayClaim;
 use modules\platform\application\dto\OutboxRelayDecision;
 use modules\platform\application\enum\OutboxRelayError;
+use modules\platform\application\exception\OutboxRelayException;
 use modules\platform\application\route\OutboxRouteRegistry;
 use modules\platform\infrastructure\db\OutboxRelayRowMapper;
 
@@ -97,6 +98,89 @@ final class OutboxRelayRowMapperTest extends Unit
             'outcome' => 'RETRY_SCHEDULED',
             'error_code' => 'confirm_timeout',
         ], $history['attempts'][1]);
+    }
+
+    /** @dataProvider expiredLeaseDecisions */
+    public function testClosesInterruptedAttemptWithoutRewritingHistory(OutboxRelayDecision $decision): void
+    {
+        $history = self::history();
+        $completed = (new OutboxRelayRowMapper(new OutboxRouteRegistry()))->completeExpiredHistory(
+            json_encode($history, JSON_THROW_ON_ERROR),
+            2,
+            new DateTimeImmutable('2026-09-28T12:00:00+05:00'),
+            $decision,
+            new DateTimeImmutable('2026-09-28T12:00:01+05:00'),
+        );
+
+        self::assertNotNull($completed);
+        $result = json_decode($completed, true, 16, JSON_THROW_ON_ERROR);
+        self::assertSame($history['attempts'][0], $result['attempts'][0]);
+        self::assertSame([
+            'attempt_no' => 2,
+            'started_at' => '2026-09-28T07:00:00.000000Z',
+            'finished_at' => '2026-09-28T07:00:01.000000Z',
+            'outcome' => $decision->status,
+            'error_code' => 'lease_expired',
+        ], $result['attempts'][1]);
+    }
+
+    /** @return iterable<string, array{OutboxRelayDecision}> */
+    public static function expiredLeaseDecisions(): iterable
+    {
+        yield 'retry' => [OutboxRelayDecision::retry(OutboxRelayError::LEASE_EXPIRED, 15)];
+        yield 'exhausted' => [OutboxRelayDecision::failed(OutboxRelayError::LEASE_EXPIRED)];
+    }
+
+    public function testClosesFirstInterruptedAttemptFromEmptyHistory(): void
+    {
+        $completed = (new OutboxRelayRowMapper(new OutboxRouteRegistry()))->completeExpiredHistory(
+            '{"schema_version":"1.0","attempts":[]}',
+            1,
+            new DateTimeImmutable('2026-09-28T07:00:00Z'),
+            OutboxRelayDecision::retry(OutboxRelayError::LEASE_EXPIRED, 15),
+            new DateTimeImmutable('2026-09-28T07:00:01Z'),
+        );
+
+        self::assertNotNull($completed);
+        $history = json_decode($completed, true, 16, JSON_THROW_ON_ERROR);
+        self::assertSame(1, $history['attempts'][0]['attempt_no']);
+        self::assertCount(1, $history['attempts']);
+    }
+
+    public function testDoesNotAppendAttemptWhenBudgetWasAlreadyExhausted(): void
+    {
+        $json = json_encode(self::history(), JSON_THROW_ON_ERROR);
+
+        self::assertNull((new OutboxRelayRowMapper(new OutboxRouteRegistry()))->completeExpiredHistory(
+            $json,
+            1,
+            new DateTimeImmutable('2026-09-28T12:00:00+05:00'),
+            OutboxRelayDecision::failed(OutboxRelayError::ATTEMPT_LIMIT_REACHED),
+            new DateTimeImmutable('2026-09-28T12:00:01+05:00'),
+        ));
+    }
+
+    /** @dataProvider invalidExpiredHistories */
+    public function testRejectsInconsistentInterruptedAttempt(string $json, int $attemptCount): void
+    {
+        $this->expectException(OutboxRelayException::class);
+        $this->expectExceptionMessage('invalid_message');
+
+        (new OutboxRelayRowMapper(new OutboxRouteRegistry()))->completeExpiredHistory(
+            $json,
+            $attemptCount,
+            new DateTimeImmutable('2026-09-28T12:00:00+05:00'),
+            OutboxRelayDecision::retry(OutboxRelayError::LEASE_EXPIRED, 15),
+            new DateTimeImmutable('2026-09-28T12:00:01+05:00'),
+        );
+    }
+
+    /** @return iterable<string, array{string, int}> */
+    public static function invalidExpiredHistories(): iterable
+    {
+        yield 'malformed' => ['{', 2];
+        yield 'missing previous attempt' => ['{"schema_version":"1.0","attempts":[]}', 2];
+        yield 'skipped previous attempt' => [json_encode(self::history(), JSON_THROW_ON_ERROR), 3];
     }
 
     /** @dataProvider invalidHistories */

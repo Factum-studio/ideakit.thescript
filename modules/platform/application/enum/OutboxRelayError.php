@@ -13,6 +13,7 @@ enum OutboxRelayError: string
     case CONNECTION_FAILURE = 'connection_failure';
     case NACKED = 'nacked';
     case CONFIRM_TIMEOUT = 'confirm_timeout';
+    case LEASE_EXPIRED = 'lease_expired';
     case UNROUTABLE = 'unroutable';
     case CONFIGURATION_INVALID = 'configuration_invalid';
     case TOPOLOGY_MISMATCH = 'topology_mismatch';

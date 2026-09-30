@@ -95,6 +95,46 @@ final class OutboxRelayRowMapper
         return json_encode($history, JSON_THROW_ON_ERROR);
     }
 
+    /** @throws OutboxRelayException */
+    public function completeExpiredHistory(
+        string $json,
+        int $attemptCount,
+        DateTimeImmutable $startedAt,
+        OutboxRelayDecision $decision,
+        DateTimeImmutable $finishedAt,
+    ): ?string {
+        if ($attemptCount < 1 || $attemptCount > 10 || $finishedAt < $startedAt) {
+            throw new OutboxRelayException(OutboxRelayError::INVALID_MESSAGE);
+        }
+        $history = self::history($json, $attemptCount);
+        if ($history === null) {
+            throw new OutboxRelayException(OutboxRelayError::INVALID_MESSAGE);
+        }
+        $attempts = $history['attempts'];
+        $lastAttempt = $attempts === [] ? 0 : $attempts[count($attempts) - 1]['attempt_no'];
+        if ($lastAttempt === $attemptCount) {
+            if ($decision->status !== 'FAILED' || $decision->error !== OutboxRelayError::ATTEMPT_LIMIT_REACHED) {
+                throw new OutboxRelayException(OutboxRelayError::INVALID_MESSAGE);
+            }
+
+            return null;
+        }
+        if ($lastAttempt !== $attemptCount - 1 || $decision->error !== OutboxRelayError::LEASE_EXPIRED
+            || !in_array($decision->status, ['RETRY_SCHEDULED', 'FAILED'], true)
+        ) {
+            throw new OutboxRelayException(OutboxRelayError::INVALID_MESSAGE);
+        }
+        $history['attempts'][] = [
+            'attempt_no' => $attemptCount,
+            'started_at' => self::utc($startedAt),
+            'finished_at' => self::utc($finishedAt),
+            'outcome' => $decision->status,
+            'error_code' => OutboxRelayError::LEASE_EXPIRED->value,
+        ];
+
+        return json_encode($history, JSON_THROW_ON_ERROR);
+    }
+
     /**
      * @param array<string, mixed> $row
      * @throws OutboxRelayException
