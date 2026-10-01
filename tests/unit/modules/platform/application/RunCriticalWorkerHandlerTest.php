@@ -126,11 +126,12 @@ final class RunCriticalWorkerHandlerTest extends Unit
     }
 
     /** @dataProvider terminalRefusals */
-    public function testRejectsOnlyExplicitTerminalReasons(string $reason): void
+    public function testRejectsOnlyExplicitTerminalReasons(string $scenario, string $reason): void
     {
-        $message = match ($reason) {
-            'invalid_envelope' => new BrokerTransportException(BrokerTransportErrorCode::INVALID_ENVELOPE),
-            'unsupported_contract' => self::message('2.0'),
+        $message = match ($scenario) {
+            'malformed' => new BrokerTransportException(BrokerTransportErrorCode::INVALID_ENVELOPE),
+            'unknown version' => self::message('2.0'),
+            'unknown type' => self::message('1.0', 'future.command'),
             default => self::message(),
         };
         $delivery = $this->delivery($message);
@@ -159,12 +160,13 @@ final class RunCriticalWorkerHandlerTest extends Unit
         );
     }
 
-    /** @return iterable<string, array{string}> */
+    /** @return iterable<string, array{string, string}> */
     public static function terminalRefusals(): iterable
     {
-        yield 'malformed' => ['invalid_envelope'];
-        yield 'unknown version' => ['unsupported_contract'];
-        yield 'terminal refusal' => ['handler_rejected'];
+        yield 'malformed' => ['malformed', 'invalid_envelope'];
+        yield 'unknown version' => ['unknown version', 'unsupported_contract'];
+        yield 'unknown type' => ['unknown type', 'unsupported_contract'];
+        yield 'terminal refusal' => ['terminal refusal', 'handler_rejected'];
     }
 
     /** @dataProvider handlerFailures */
@@ -496,11 +498,11 @@ final class RunCriticalWorkerHandlerTest extends Unit
         return $delivery;
     }
 
-    private static function message(string $version = '1.0'): BrokerEnvelope
+    private static function message(string $version = '1.0', string $type = 'telegram.update.received'): BrokerEnvelope
     {
         return new BrokerEnvelope(
             '01890f4d-3c2a-7f48-8c0b-123456789ac4',
-            'telegram.update.received',
+            $type,
             $version,
             '01890f4d-3c2a-7f48-8c0b-123456789ac5',
             new TelegramUpdateReceivedPayload('01890f4d-3c2a-7f48-8c0b-123456789ac6'),

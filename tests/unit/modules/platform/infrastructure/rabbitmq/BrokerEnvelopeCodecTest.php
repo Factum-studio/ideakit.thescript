@@ -31,6 +31,13 @@ final class BrokerEnvelopeCodecTest extends Unit
             new TelegramUpdateReceivedPayload(self::UPDATE_ID),
         );
         $message = $codec->encode($envelope);
+        self::assertSame(
+            '{"outbox_id":"01890f4d-3c2a-7f48-8c0b-123456789ac4",'
+            . '"message_type":"telegram.update.received","schema_version":"1.0",'
+            . '"correlation_id":"01890f4d-3c2a-7f48-8c0b-123456789ac5",'
+            . '"payload":{"update_id":"01890f4d-3c2a-7f48-8c0b-123456789ac6"}}',
+            $message->getBody(),
+        );
         self::assertSame(self::body(), $message->getBody());
         self::assertSame($message->getBody(), $codec->encode($envelope)->getBody());
         self::assertSame(self::properties(), $message->get_properties());

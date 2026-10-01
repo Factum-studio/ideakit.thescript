@@ -79,7 +79,7 @@ final class DbOutboxWriterTest extends Unit
         self::assertSame('TELEGRAM_UPDATE', $row['aggregate_type']);
         self::assertSame(self::UPDATE_ID, $row['aggregate_id']);
         self::assertSame(['update_id' => self::UPDATE_ID], json_decode((string) $row['payload'], true, 512, JSON_THROW_ON_ERROR));
-        self::assertSame(hash('sha256', json_encode(['update_id' => self::UPDATE_ID], JSON_THROW_ON_ERROR)), $row['payload_hash']);
+        self::assertSame('e566f922aed6c1b103584da924a9845ea84565b58a886c4c565103ee58fa0449', $row['payload_hash']);
         self::assertSame('PENDING', $row['status']);
         self::assertSame(0, (int) $row['attempt_count']);
         self::assertEqualsCanonicalizing(['schema_version' => '1.0', 'attempts' => []], json_decode((string) $row['attempt_history'], true, 512, JSON_THROW_ON_ERROR));

@@ -134,6 +134,11 @@ final class OutboxPayloadCleanupIntegrationTest extends Unit
         $this->deliver($id, 31);
         self::assertSame(1, $this->store()->clearDue(1)->cleared);
         $before = $this->row($id);
+        self::assertNull($before['payload']);
+        self::assertSame(
+            hash('sha256', '{"update_id":"' . $before['aggregate_id'] . '"}'),
+            $before['payload_hash'],
+        );
 
         $transaction = $this->db->beginTransaction();
         try {
