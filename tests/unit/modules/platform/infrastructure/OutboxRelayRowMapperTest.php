@@ -29,6 +29,17 @@ final class OutboxRelayRowMapperTest extends Unit
         self::assertTrue($claim->attemptStarted);
     }
 
+    public function testUnknownRouteIsRejectedBeforeOwnerPayloadIsDecoded(): void
+    {
+        $claim = $this->claim(array_replace(self::row(), [
+            'owner_module' => 'Other',
+            'payload' => '{"unexpected":"synthetic"}',
+        ]));
+
+        self::assertNull($claim->envelope);
+        self::assertSame(OutboxRelayError::UNSUPPORTED_ROUTE, $claim->rejection);
+    }
+
     /**
      * @dataProvider invalidRows
      * @param array<string, mixed> $changes

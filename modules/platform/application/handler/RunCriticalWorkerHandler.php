@@ -71,10 +71,11 @@ final class RunCriticalWorkerHandler
                             try {
                                 $message = $delivery->message();
                             } catch (BrokerTransportException $exception) {
-                                if ($exception->errorCode !== BrokerTransportErrorCode::INVALID_ENVELOPE) {
-                                    throw $exception;
-                                }
-                                $rejection = 'invalid_envelope';
+                                $rejection = match ($exception->errorCode) {
+                                    BrokerTransportErrorCode::INVALID_ENVELOPE => 'invalid_envelope',
+                                    BrokerTransportErrorCode::UNSUPPORTED_CONTRACT => 'unsupported_contract',
+                                    default => throw $exception,
+                                };
 
                                 return;
                             }

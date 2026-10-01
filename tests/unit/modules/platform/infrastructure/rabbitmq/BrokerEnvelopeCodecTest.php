@@ -45,18 +45,36 @@ final class BrokerEnvelopeCodecTest extends Unit
         self::assertEquals($envelope, $codec->decode($message));
     }
 
-    public function testTransportDoesNotDispatchOrAllowlistMessageTypes(): void
+    public function testUnknownContractIsClassifiedWithoutDecodingOwnerPayload(): void
     {
         $body = self::fields();
         $body['message_type'] = 'future.command';
         $body['schema_version'] = '2.0';
+        $body['payload'] = ['future_id' => 'synthetic'];
         $message = new AMQPMessage(json_encode($body, JSON_THROW_ON_ERROR), self::properties());
         $codec = new BrokerEnvelopeCodec(TestOutboxRoutes::registry());
-        $envelope = $codec->decode($message);
+        try {
+            $codec->decode($message);
+            self::fail('Expected unsupported contract.');
+        } catch (BrokerTransportException $exception) {
+            self::assertSame('unsupported_contract', $exception->errorCode->value);
+            self::assertSame('unsupported_contract', $exception->getMessage());
+            self::assertNull($exception->getPrevious());
+        }
+    }
 
-        self::assertSame('future.command', $envelope->messageType);
-        self::assertSame('2.0', $envelope->schemaVersion);
-        self::assertSame($message->getBody(), $codec->encode($envelope)->getBody());
+    public function testEncodeRejectsUnknownContract(): void
+    {
+        $this->expectException(BrokerTransportException::class);
+        $this->expectExceptionMessage('invalid_envelope');
+
+        (new BrokerEnvelopeCodec(TestOutboxRoutes::registry()))->encode(new BrokerEnvelope(
+            self::OUTBOX_ID,
+            'future.command',
+            '2.0',
+            self::CORRELATION_ID,
+            new TelegramUpdateReceivedPayload(self::UPDATE_ID),
+        ));
     }
 
     public function testAcceptsEnvelopeAtByteLimit(): void

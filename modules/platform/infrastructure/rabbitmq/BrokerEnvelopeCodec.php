@@ -9,10 +9,10 @@ use modules\platform\application\dto\BrokerEnvelope;
 use modules\platform\application\enum\BrokerTransportErrorCode;
 use modules\platform\application\exception\BrokerTransportException;
 use modules\platform\application\exception\OutboxWriteException;
-use modules\platform\application\message\IOutboxPayloadCodec;
 use modules\platform\application\route\OutboxRouteRegistry;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
+use Ramsey\Uuid\Uuid;
 use stdClass;
 
 final class BrokerEnvelopeCodec
@@ -26,12 +26,13 @@ final class BrokerEnvelopeCodec
     /** @throws BrokerTransportException */
     public function encode(BrokerEnvelope $envelope): AMQPMessage
     {
-        if (!$this->payloadCodec($envelope->messageType, $envelope->schemaVersion)->accepts($envelope->payload)) {
+        $route = $this->routes->find($envelope->messageType, $envelope->schemaVersion);
+        if ($route === null || !$route->payloadCodec->accepts($envelope->payload)) {
             throw new BrokerTransportException(BrokerTransportErrorCode::INVALID_ENVELOPE);
         }
         try {
             $payload = $envelope->payload->technicalFields();
-            if (strlen(json_encode($payload, JSON_THROW_ON_ERROR, 16)) > 1024) {
+            if (strlen(json_encode($payload, JSON_THROW_ON_ERROR, 16)) > $route->maximumPayloadBytes) {
                 throw new BrokerTransportException(BrokerTransportErrorCode::INVALID_ENVELOPE);
             }
             $body = json_encode([
@@ -97,27 +98,37 @@ final class BrokerEnvelopeCodec
             ) {
                 throw new BrokerTransportException(BrokerTransportErrorCode::INVALID_ENVELOPE);
             }
+            self::assertEnvelopeFields($fields->outbox_id, $fields->message_type, $fields->schema_version, $fields->correlation_id);
+            $route = $this->routes->find($fields->message_type, $fields->schema_version);
+            if ($route === null) {
+                throw new BrokerTransportException(BrokerTransportErrorCode::UNSUPPORTED_CONTRACT);
+            }
 
             return new BrokerEnvelope(
                 $fields->outbox_id,
                 $fields->message_type,
                 $fields->schema_version,
                 $fields->correlation_id,
-                $this->payloadCodec($fields->message_type, $fields->schema_version)->decode(get_object_vars($fields->payload)),
+                $route->payloadCodec->decode(get_object_vars($fields->payload)),
             );
         } catch (JsonException | OutboxWriteException) {
             throw new BrokerTransportException(BrokerTransportErrorCode::INVALID_ENVELOPE);
         }
     }
 
-    private function payloadCodec(string $messageType, string $schemaVersion): IOutboxPayloadCodec
+    private static function assertEnvelopeFields(string $outboxId, string $messageType, string $schemaVersion, string $correlationId): void
     {
-        $route = $this->routes->find($messageType, $schemaVersion)
-            ?? $this->routes->forRoutingKey('critical')[0] ?? null;
-        if ($route === null) {
-            throw new BrokerTransportException(BrokerTransportErrorCode::INVALID_ENVELOPE);
+        foreach ([$outboxId, $correlationId] as $id) {
+            if (!Uuid::isValid($id) || Uuid::fromString($id)->toString() !== $id) {
+                throw new BrokerTransportException(BrokerTransportErrorCode::INVALID_ENVELOPE);
+            }
         }
-
-        return $route->payloadCodec;
+        foreach ([[$messageType, 64], [$schemaVersion, 48]] as [$value, $limit]) {
+            if (!mb_check_encoding($value, 'UTF-8') || trim($value) === ''
+                || mb_strlen($value, 'UTF-8') > $limit || preg_match('/[\x00-\x1f\x7f]/', $value) !== 0
+            ) {
+                throw new BrokerTransportException(BrokerTransportErrorCode::INVALID_ENVELOPE);
+            }
+        }
     }
 }

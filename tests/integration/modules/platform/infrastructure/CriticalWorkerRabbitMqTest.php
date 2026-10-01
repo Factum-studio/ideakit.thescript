@@ -141,13 +141,19 @@ final class CriticalWorkerRabbitMqTest extends Unit
                 if ($malformed) {
                     $channel->basic_publish(new AMQPMessage('{', ['delivery_mode' => 2]), 'ideakit.commands', 'critical', true);
                 } else {
-                    $unknown = (new BrokerEnvelopeCodec(TestOutboxRoutes::registry()))->encode(new BrokerEnvelope(
-                        Uuid::uuid7()->toString(),
-                        'future.command',
-                        '2.0',
-                        $message->correlationId,
-                        $message->payload,
-                    ));
+                    $unknownId = Uuid::uuid7()->toString();
+                    $unknown = new AMQPMessage(json_encode([
+                        'outbox_id' => $unknownId,
+                        'message_type' => 'future.command',
+                        'schema_version' => '2.0',
+                        'correlation_id' => $message->correlationId,
+                        'payload' => ['future_id' => 'synthetic'],
+                    ], JSON_THROW_ON_ERROR), [
+                        'message_id' => $unknownId,
+                        'correlation_id' => $message->correlationId,
+                        'content_type' => 'application/json',
+                        'delivery_mode' => 2,
+                    ]);
                     $channel->basic_publish($unknown, 'ideakit.commands', 'critical', true);
                 }
             } finally {

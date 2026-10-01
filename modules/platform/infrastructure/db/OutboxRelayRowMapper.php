@@ -154,6 +154,15 @@ final class OutboxRelayRowMapper
                 throw new OutboxRelayException(OutboxRelayError::INVALID_MESSAGE);
             }
         }
+        $route = $this->routes->find($row['message_type'], $row['schema_version']);
+        if ($route === null || $row['owner_module'] !== $route->ownerModule
+            || $row['aggregate_type'] !== $route->aggregateType
+        ) {
+            throw new OutboxRelayException(OutboxRelayError::UNSUPPORTED_ROUTE);
+        }
+        if ($row['destination'] !== $route->destination || $row['routing_key'] !== $route->routingKey) {
+            throw new OutboxRelayException(OutboxRelayError::INVALID_MESSAGE);
+        }
         if (strlen($row['payload']) > 4096) {
             throw new OutboxRelayException(OutboxRelayError::INVALID_MESSAGE);
         }
@@ -161,10 +170,6 @@ final class OutboxRelayRowMapper
             $payload = json_decode($row['payload'], false, 16, JSON_THROW_ON_ERROR);
             if (!$payload instanceof stdClass) {
                 throw new OutboxRelayException(OutboxRelayError::INVALID_MESSAGE);
-            }
-            $route = $this->routes->find($row['message_type'], $row['schema_version']);
-            if ($route === null) {
-                throw new OutboxRelayException(OutboxRelayError::UNSUPPORTED_ROUTE);
             }
             $intent = new OutboxWriteIntent(
                 $row['owner_module'],
@@ -178,8 +183,7 @@ final class OutboxRelayRowMapper
             );
             $route = $this->routes->resolve($intent);
             $canonical = json_encode($intent->payload->technicalFields(), JSON_THROW_ON_ERROR);
-            if ($row['destination'] !== $route->destination || $row['routing_key'] !== $route->routingKey
-                || strlen($canonical) > $route->maximumPayloadBytes
+            if (strlen($canonical) > $route->maximumPayloadBytes
                 || !hash_equals(hash('sha256', $canonical), $row['payload_hash'])
             ) {
                 throw new OutboxRelayException(OutboxRelayError::INVALID_MESSAGE);

@@ -131,6 +131,7 @@ final class RunCriticalWorkerHandlerTest extends Unit
     {
         $message = match ($scenario) {
             'malformed' => new BrokerTransportException(BrokerTransportErrorCode::INVALID_ENVELOPE),
+            'unsupported decode' => new BrokerTransportException(BrokerTransportErrorCode::UNSUPPORTED_CONTRACT),
             'unknown version' => self::message('2.0'),
             'unknown type' => self::message('1.0', 'future.command'),
             default => self::message(),
@@ -165,6 +166,7 @@ final class RunCriticalWorkerHandlerTest extends Unit
     public static function terminalRefusals(): iterable
     {
         yield 'malformed' => ['malformed', 'invalid_envelope'];
+        yield 'unsupported decode' => ['unsupported decode', 'unsupported_contract'];
         yield 'unknown version' => ['unknown version', 'unsupported_contract'];
         yield 'unknown type' => ['unknown type', 'unsupported_contract'];
         yield 'terminal refusal' => ['terminal refusal', 'handler_rejected'];
