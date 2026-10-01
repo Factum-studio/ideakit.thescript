@@ -15,11 +15,11 @@ use modules\platform\application\enum\OutboxRelayError;
 use modules\platform\application\exception\BrokerTransportException;
 use modules\platform\application\exception\OutboxRelayException;
 use modules\platform\application\handler\RelayOutboxHandler;
-use modules\platform\application\message\TelegramUpdateReceivedPayload;
+use modules\telegram\application\message\TelegramUpdateReceivedPayload;
 use modules\platform\application\policy\OutboxRetryPolicy;
 use modules\platform\application\port\IBrokerPublisher;
 use modules\platform\application\port\IOutboxRelayStore;
-use modules\platform\application\route\OutboxRouteRegistry;
+use tests\fixtures\platform\TestOutboxRoutes;
 use modules\platform\infrastructure\db\DbOutboxRelayStore;
 use modules\platform\infrastructure\db\DbOutboxWriter;
 use modules\platform\infrastructure\db\OutboxRelayRowMapper;
@@ -162,7 +162,7 @@ final class OutboxRelayIntegrationTest extends Unit
     private function write(): string
     {
         $update = Uuid::uuid7()->toString();
-        $receipt = (new DbOutboxWriter($this->db, new OutboxRouteRegistry()))->write(new OutboxWriteIntent(
+        $receipt = (new DbOutboxWriter($this->db, TestOutboxRoutes::registry()))->write(new OutboxWriteIntent(
             'Telegram',
             'telegram.update.received',
             '1.0',
@@ -178,7 +178,7 @@ final class OutboxRelayIntegrationTest extends Unit
 
     private function store(): DbOutboxRelayStore
     {
-        return new DbOutboxRelayStore($this->db, new OutboxRelayRowMapper(new OutboxRouteRegistry()), new RamseyOutboxLeaseTokenGenerator());
+        return new DbOutboxRelayStore($this->db, new OutboxRelayRowMapper(TestOutboxRoutes::registry()), new RamseyOutboxLeaseTokenGenerator());
     }
 
     private function handler(IBrokerPublisher $publisher, ?IOutboxRelayStore $store = null, int $maxAttempts = 5): RelayOutboxHandler

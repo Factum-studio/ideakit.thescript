@@ -18,7 +18,7 @@ final class BackgroundCommandRegistry
      * @param list<BackgroundCommandRegistration> $registrations
      * @throws CriticalWorkerException
      */
-    public function __construct(array $registrations)
+    public function __construct(array $registrations, private readonly OutboxRouteRegistry $routes)
     {
         $handlers = [];
         foreach ($registrations as $registration) {
@@ -42,8 +42,11 @@ final class BackgroundCommandRegistry
     /** @throws CriticalWorkerException */
     public function assertCriticalRouteRegistered(): void
     {
-        if (!isset($this->handlers["telegram.update.received\0" . '1.0'])) {
-            throw new CriticalWorkerException(CriticalWorkerError::HANDLER_MISSING);
+        foreach ($this->routes->forRoutingKey('critical') as $route) {
+            if (isset($this->handlers[$route->messageType . "\0" . $route->schemaVersion])) {
+                return;
+            }
         }
+        throw new CriticalWorkerException(CriticalWorkerError::HANDLER_MISSING);
     }
 }

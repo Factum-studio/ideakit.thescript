@@ -12,8 +12,8 @@ use modules\platform\application\enum\OutboxWriteFailure;
 use modules\platform\application\enum\OutboxWriteOutcome;
 use modules\platform\application\exception\OutboxMaintenanceException;
 use modules\platform\application\exception\OutboxWriteException;
-use modules\platform\application\message\TelegramUpdateReceivedPayload;
-use modules\platform\application\route\OutboxRouteRegistry;
+use modules\telegram\application\message\TelegramUpdateReceivedPayload;
+use tests\fixtures\platform\TestOutboxRoutes;
 use modules\platform\infrastructure\db\DbOutboxPayloadCleanupStore;
 use modules\platform\infrastructure\db\DbOutboxWriter;
 use Ramsey\Uuid\Uuid;
@@ -142,11 +142,11 @@ final class OutboxPayloadCleanupIntegrationTest extends Unit
 
         $transaction = $this->db->beginTransaction();
         try {
-            $same = (new DbOutboxWriter($this->db, new OutboxRouteRegistry()))->write($this->intent($before['aggregate_id']));
+            $same = (new DbOutboxWriter($this->db, TestOutboxRoutes::registry()))->write($this->intent($before['aggregate_id']));
             self::assertSame(OutboxWriteOutcome::ALREADY_EXISTS, $same->outcome);
             self::assertSame($id, $same->outboxMessageId);
             try {
-                (new DbOutboxWriter($this->db, new OutboxRouteRegistry()))->write(
+                (new DbOutboxWriter($this->db, TestOutboxRoutes::registry()))->write(
                     $this->intent(Uuid::uuid7()->toString(), $before['aggregate_id']),
                 );
                 self::fail('Expected idempotency conflict.');
@@ -190,7 +190,7 @@ final class OutboxPayloadCleanupIntegrationTest extends Unit
     {
         $aggregateId = Uuid::uuid7()->toString();
         $transaction = $this->db->beginTransaction();
-        $receipt = (new DbOutboxWriter($this->db, new OutboxRouteRegistry()))->write(
+        $receipt = (new DbOutboxWriter($this->db, TestOutboxRoutes::registry()))->write(
             $this->intent($aggregateId),
         );
         $this->ownedIds[] = $receipt->outboxMessageId;

@@ -9,8 +9,8 @@ use modules\platform\application\dto\OutboxWriteIntent;
 use modules\platform\application\enum\OutboxWriteFailure;
 use modules\platform\application\enum\OutboxWriteOutcome;
 use modules\platform\application\exception\OutboxWriteException;
-use modules\platform\application\message\TelegramUpdateReceivedPayload;
-use modules\platform\application\route\OutboxRouteRegistry;
+use modules\telegram\application\message\TelegramUpdateReceivedPayload;
+use tests\fixtures\platform\TestOutboxRoutes;
 use modules\platform\infrastructure\db\DbOutboxWriter;
 use Yii;
 use yii\db\Connection;
@@ -34,7 +34,7 @@ final class DbOutboxWriterTest extends Unit
         self::assertSame('pgsql', $db->driverName);
         self::assertSame('ideakit_test', $db->createCommand('SELECT current_database()')->queryScalar());
         $this->db = $db;
-        $this->writer = new DbOutboxWriter($db, new OutboxRouteRegistry());
+        $this->writer = new DbOutboxWriter($db, TestOutboxRoutes::registry());
     }
 
     protected function _after(): void
@@ -313,11 +313,11 @@ flush();
 try {
     $intent = new modules\platform\application\dto\OutboxWriteIntent(
         'Telegram', 'telegram.update.received', '1.0', 'TELEGRAM_UPDATE', $argv[1],
-        new modules\platform\application\message\TelegramUpdateReceivedPayload($argv[1]),
+        new modules\telegram\application\message\TelegramUpdateReceivedPayload($argv[1]),
         'platform-writer-test', '01890f4d-3c2a-7f48-8c0b-123456789bd4',
     );
     $writer = new modules\platform\infrastructure\db\DbOutboxWriter(
-        $db, new modules\platform\application\route\OutboxRouteRegistry(),
+        $db, tests\fixtures\platform\TestOutboxRoutes::registry(),
     );
     $receipt = $writer->write($intent);
     echo $receipt->outcome->value;

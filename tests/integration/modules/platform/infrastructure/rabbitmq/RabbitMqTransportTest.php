@@ -8,8 +8,9 @@ use Codeception\Test\Unit;
 use modules\platform\application\dto\BrokerEnvelope;
 use modules\platform\application\enum\BrokerTransportErrorCode;
 use modules\platform\application\exception\BrokerTransportException;
-use modules\platform\application\message\TelegramUpdateReceivedPayload;
+use modules\telegram\application\message\TelegramUpdateReceivedPayload;
 use modules\platform\infrastructure\rabbitmq\BrokerEnvelopeCodec;
+use tests\fixtures\platform\TestOutboxRoutes;
 use modules\platform\infrastructure\rabbitmq\RabbitMqConnectionConfig;
 use modules\platform\infrastructure\rabbitmq\RabbitMqConnectionFactory;
 use modules\platform\infrastructure\rabbitmq\RabbitMqPublisher;
@@ -135,8 +136,8 @@ final class RabbitMqTransportTest extends Unit
     public function testConfirmedPublicationPreservesPropertiesAndIdOnExplicitRepeat(): void
     {
         $this->withTopology(function (AMQPChannel $channel, RabbitMqConnectionFactory $factory): void {
-            $codec = new BrokerEnvelopeCodec();
-            $publisher = new RabbitMqPublisher($factory, $codec, 5.0);
+            $codec = new BrokerEnvelopeCodec(TestOutboxRoutes::registry());
+            $publisher = new RabbitMqPublisher($factory, $codec, 5.0, TestOutboxRoutes::registry());
             $envelope = self::envelope();
             foreach ([1, 2] as $expectedCount) {
                 $receipt = $publisher->publish($envelope);
@@ -164,7 +165,7 @@ final class RabbitMqTransportTest extends Unit
         $this->withTopology(function (AMQPChannel $channel, RabbitMqConnectionFactory $factory): void {
             $channel->queue_unbind('critical', 'ideakit.commands', 'critical');
             try {
-                $publisher = new RabbitMqPublisher($factory, new BrokerEnvelopeCodec(), 5.0);
+                $publisher = new RabbitMqPublisher($factory, new BrokerEnvelopeCodec(TestOutboxRoutes::registry()), 5.0, TestOutboxRoutes::registry());
                 try {
                     $publisher->publish(self::envelope());
                     self::fail('Expected unroutable publication.');
@@ -191,7 +192,7 @@ final class RabbitMqTransportTest extends Unit
             'ideakit_transport_test',
             0.2,
         ));
-        $publisher = new RabbitMqPublisher($factory, new BrokerEnvelopeCodec(), 0.2);
+        $publisher = new RabbitMqPublisher($factory, new BrokerEnvelopeCodec(TestOutboxRoutes::registry()), 0.2, TestOutboxRoutes::registry());
         $started = hrtime(true);
         try {
             $publisher->publish(self::envelope());
@@ -202,7 +203,7 @@ final class RabbitMqTransportTest extends Unit
             self::assertNull($exception->getPrevious());
             self::assertLessThan(5.0, (hrtime(true) - $started) / 1e9);
         }
-        $receiver = new RabbitMqReceiver($factory, new BrokerEnvelopeCodec(), 0.2);
+        $receiver = new RabbitMqReceiver($factory, new BrokerEnvelopeCodec(TestOutboxRoutes::registry()), 0.2);
         try {
             self::assertTransportError(BrokerTransportErrorCode::CONNECTION_FAILURE, static fn () => $receiver->receive(0.2));
         } finally {
@@ -213,13 +214,13 @@ final class RabbitMqTransportTest extends Unit
     public function testManualAckAndPrefetchLimitOutstandingDelivery(): void
     {
         $this->withTopology(function (AMQPChannel $channel, RabbitMqConnectionFactory $factory): void {
-            $codec = new BrokerEnvelopeCodec();
-            $publisher = new RabbitMqPublisher($factory, $codec, 5.0);
+            $codec = new BrokerEnvelopeCodec(TestOutboxRoutes::registry());
+            $publisher = new RabbitMqPublisher($factory, $codec, 5.0, TestOutboxRoutes::registry());
             $first = self::envelope();
             $second = new BrokerEnvelope(
                 '01890f4d-3c2a-7f48-8c0b-123456789ad4',
-                'future.command',
-                '2.0',
+                'telegram.update.received',
+                '1.0',
                 $first->correlationId,
                 $first->payload,
             );
@@ -254,8 +255,8 @@ final class RabbitMqTransportTest extends Unit
     public function testClosingBeforeAckAllowsRedeliveryAndInvalidatesOldDelivery(): void
     {
         $this->withTopology(function (AMQPChannel $channel, RabbitMqConnectionFactory $factory): void {
-            $codec = new BrokerEnvelopeCodec();
-            (new RabbitMqPublisher($factory, $codec, 5.0))->publish(self::envelope());
+            $codec = new BrokerEnvelopeCodec(TestOutboxRoutes::registry());
+            (new RabbitMqPublisher($factory, $codec, 5.0, TestOutboxRoutes::registry()))->publish(self::envelope());
             $receiver = new RabbitMqReceiver($factory, $codec, 0.1);
             try {
                 $delivery = $receiver->receive(5.0);
@@ -291,7 +292,7 @@ final class RabbitMqTransportTest extends Unit
                 $_ENV['TEST_RABBITMQ_VHOST'],
                 heartbeat: $heartbeat,
             ));
-            $receiver = new RabbitMqReceiver($factory, new BrokerEnvelopeCodec(), $poll, 4);
+            $receiver = new RabbitMqReceiver($factory, new BrokerEnvelopeCodec(TestOutboxRoutes::registry()), $poll, 4);
             try {
                 self::assertTransportError(BrokerTransportErrorCode::CONFIGURATION_INVALID, static fn () => $receiver->receive(1.0));
                 [, , $consumers] = $channel->queue_declare('critical', true);
@@ -312,8 +313,8 @@ final class RabbitMqTransportTest extends Unit
     public function testRejectDeadLettersWithBrokerMetadataAndNoAutomaticReturn(): void
     {
         $this->withTopology(function (AMQPChannel $channel, RabbitMqConnectionFactory $factory): void {
-            $codec = new BrokerEnvelopeCodec();
-            (new RabbitMqPublisher($factory, $codec, 5.0))->publish(self::envelope());
+            $codec = new BrokerEnvelopeCodec(TestOutboxRoutes::registry());
+            (new RabbitMqPublisher($factory, $codec, 5.0, TestOutboxRoutes::registry()))->publish(self::envelope());
             $receiver = new RabbitMqReceiver($factory, $codec, 0.1);
             try {
                 $delivery = $receiver->receive(5.0);
@@ -337,11 +338,11 @@ final class RabbitMqTransportTest extends Unit
     public function testDeadLetterIsRetainedUntilErrorBindingIsRestored(): void
     {
         $this->withTopology(function (AMQPChannel $channel, RabbitMqConnectionFactory $factory): void {
-            $codec = new BrokerEnvelopeCodec();
+            $codec = new BrokerEnvelopeCodec(TestOutboxRoutes::registry());
             $receiver = new RabbitMqReceiver($factory, $codec, 0.1);
             $channel->queue_unbind('critical.failed', 'ideakit.dead-letter', 'critical.failed');
             try {
-                (new RabbitMqPublisher($factory, $codec, 5.0))->publish(self::envelope());
+                (new RabbitMqPublisher($factory, $codec, 5.0, TestOutboxRoutes::registry()))->publish(self::envelope());
                 $delivery = $receiver->receive(5.0);
                 self::assertNotNull($delivery);
                 $delivery->reject();
@@ -370,7 +371,7 @@ final class RabbitMqTransportTest extends Unit
             $channel->confirm_select();
             $channel->basic_publish(new AMQPMessage($body, ['delivery_mode' => 2]), 'ideakit.commands', 'critical', true);
             $channel->wait_for_pending_acks_returns(5.0);
-            $receiver = new RabbitMqReceiver($factory, new BrokerEnvelopeCodec(), 0.1);
+            $receiver = new RabbitMqReceiver($factory, new BrokerEnvelopeCodec(TestOutboxRoutes::registry()), 0.1);
             try {
                 $delivery = $receiver->receive(5.0);
                 self::assertNotNull($delivery);

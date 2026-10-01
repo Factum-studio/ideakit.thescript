@@ -2,10 +2,11 @@
 
 declare(strict_types=1);
 
-namespace modules\platform\application\message;
+namespace modules\telegram\application\message;
 
 use modules\platform\application\enum\OutboxWriteFailure;
 use modules\platform\application\exception\OutboxWriteException;
+use modules\platform\application\message\IOutboxPayload;
 use Ramsey\Uuid\Uuid;
 
 final class TelegramUpdateReceivedPayload implements IOutboxPayload

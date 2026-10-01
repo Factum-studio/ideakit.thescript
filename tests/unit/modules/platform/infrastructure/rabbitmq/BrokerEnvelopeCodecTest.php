@@ -9,8 +9,9 @@ use modules\platform\application\dto\BrokerEnvelope;
 use modules\platform\application\enum\BrokerTransportErrorCode;
 use modules\platform\application\exception\BrokerTransportException;
 use modules\platform\application\message\IOutboxPayload;
-use modules\platform\application\message\TelegramUpdateReceivedPayload;
+use modules\telegram\application\message\TelegramUpdateReceivedPayload;
 use modules\platform\infrastructure\rabbitmq\BrokerEnvelopeCodec;
+use tests\fixtures\platform\TestOutboxRoutes;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
 
@@ -22,7 +23,7 @@ final class BrokerEnvelopeCodecTest extends Unit
 
     public function testDeterministicRoundTripWithPersistentProperties(): void
     {
-        $codec = new BrokerEnvelopeCodec();
+        $codec = new BrokerEnvelopeCodec(TestOutboxRoutes::registry());
         $envelope = new BrokerEnvelope(
             self::OUTBOX_ID,
             'telegram.update.received',
@@ -50,7 +51,7 @@ final class BrokerEnvelopeCodecTest extends Unit
         $body['message_type'] = 'future.command';
         $body['schema_version'] = '2.0';
         $message = new AMQPMessage(json_encode($body, JSON_THROW_ON_ERROR), self::properties());
-        $codec = new BrokerEnvelopeCodec();
+        $codec = new BrokerEnvelopeCodec(TestOutboxRoutes::registry());
         $envelope = $codec->decode($message);
 
         self::assertSame('future.command', $envelope->messageType);
@@ -61,7 +62,7 @@ final class BrokerEnvelopeCodecTest extends Unit
     public function testAcceptsEnvelopeAtByteLimit(): void
     {
         $message = new AMQPMessage(str_pad(self::body(), 4096, ' '), self::properties());
-        self::assertSame(self::OUTBOX_ID, (new BrokerEnvelopeCodec())->decode($message)->outboxId);
+        self::assertSame(self::OUTBOX_ID, (new BrokerEnvelopeCodec(TestOutboxRoutes::registry()))->decode($message)->outboxId);
     }
 
     public function testAcceptsOnlyTypedQuorumDeliveryCountersWithoutChangingEnvelope(): void
@@ -69,7 +70,7 @@ final class BrokerEnvelopeCodecTest extends Unit
         $message = new AMQPMessage(self::body(), self::properties() + [
             'application_headers' => new AMQPTable(['x-delivery-count' => 1, 'x-acquired-count' => 2]),
         ]);
-        $codec = new BrokerEnvelopeCodec();
+        $codec = new BrokerEnvelopeCodec(TestOutboxRoutes::registry());
         self::assertSame(self::body(), $codec->encode($codec->decode($message))->getBody());
     }
 
@@ -77,7 +78,7 @@ final class BrokerEnvelopeCodecTest extends Unit
     public function testRejectsInvalidWireDataWithSafeError(AMQPMessage $message): void
     {
         try {
-            (new BrokerEnvelopeCodec())->decode($message);
+            (new BrokerEnvelopeCodec(TestOutboxRoutes::registry()))->decode($message);
             self::fail('Expected invalid envelope.');
         } catch (BrokerTransportException $exception) {
             self::assertSame(BrokerTransportErrorCode::INVALID_ENVELOPE, $exception->errorCode);
@@ -151,7 +152,7 @@ final class BrokerEnvelopeCodecTest extends Unit
         };
         $this->expectException(BrokerTransportException::class);
         $this->expectExceptionMessage('invalid_envelope');
-        (new BrokerEnvelopeCodec())->encode(new BrokerEnvelope(
+        (new BrokerEnvelopeCodec(TestOutboxRoutes::registry()))->encode(new BrokerEnvelope(
             self::OUTBOX_ID,
             'telegram.update.received',
             '1.0',

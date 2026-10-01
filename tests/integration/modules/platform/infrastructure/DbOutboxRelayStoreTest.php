@@ -11,9 +11,9 @@ use modules\platform\application\dto\OutboxRelaySettings;
 use modules\platform\application\dto\OutboxWriteIntent;
 use modules\platform\application\enum\OutboxRelayError;
 use modules\platform\application\exception\OutboxRelayException;
-use modules\platform\application\message\TelegramUpdateReceivedPayload;
+use modules\telegram\application\message\TelegramUpdateReceivedPayload;
 use modules\platform\application\port\IOutboxLeaseTokenGenerator;
-use modules\platform\application\route\OutboxRouteRegistry;
+use tests\fixtures\platform\TestOutboxRoutes;
 use modules\platform\infrastructure\db\DbOutboxRelayStore;
 use modules\platform\infrastructure\db\DbOutboxWriter;
 use modules\platform\infrastructure\db\OutboxRelayRowMapper;
@@ -432,11 +432,11 @@ $claim = new modules\platform\application\dto\OutboxRelayClaim(
     $id, $token, $attempt, true, new DateTimeImmutable($started), new DateTimeImmutable($until),
     new modules\platform\application\dto\BrokerEnvelope(
         $id, 'telegram.update.received', '1.0', $correlation,
-        new modules\platform\application\message\TelegramUpdateReceivedPayload($update),
+        new modules\telegram\application\message\TelegramUpdateReceivedPayload($update),
     ), null,
 );
 $store = new modules\platform\infrastructure\db\DbOutboxRelayStore(
-    $db, new modules\platform\infrastructure\db\OutboxRelayRowMapper(new modules\platform\application\route\OutboxRouteRegistry()),
+    $db, new modules\platform\infrastructure\db\OutboxRelayRowMapper(tests\fixtures\platform\TestOutboxRoutes::registry()),
     new modules\platform\infrastructure\identity\RamseyOutboxLeaseTokenGenerator(),
 );
 echo "READY\n";
@@ -476,7 +476,7 @@ PHP;
     {
         $transaction = $commit ? $this->db->beginTransaction() : null;
         $updateId = Uuid::uuid7()->toString();
-        $receipt = (new DbOutboxWriter($this->db, new OutboxRouteRegistry()))->write(new OutboxWriteIntent(
+        $receipt = (new DbOutboxWriter($this->db, TestOutboxRoutes::registry()))->write(new OutboxWriteIntent(
             'Telegram',
             'telegram.update.received',
             '1.0',
@@ -499,7 +499,7 @@ PHP;
     {
         return new DbOutboxRelayStore(
             $db ?? $this->db,
-            new OutboxRelayRowMapper(new OutboxRouteRegistry()),
+            new OutboxRelayRowMapper(TestOutboxRoutes::registry()),
             $tokens ?? new RamseyOutboxLeaseTokenGenerator(),
         );
     }

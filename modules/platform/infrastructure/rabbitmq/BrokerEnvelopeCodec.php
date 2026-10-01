@@ -9,7 +9,8 @@ use modules\platform\application\dto\BrokerEnvelope;
 use modules\platform\application\enum\BrokerTransportErrorCode;
 use modules\platform\application\exception\BrokerTransportException;
 use modules\platform\application\exception\OutboxWriteException;
-use modules\platform\application\message\TelegramUpdateReceivedPayload;
+use modules\platform\application\message\IOutboxPayloadCodec;
+use modules\platform\application\route\OutboxRouteRegistry;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
 use stdClass;
@@ -18,10 +19,14 @@ final class BrokerEnvelopeCodec
 {
     private const FIELDS = ['outbox_id', 'message_type', 'schema_version', 'correlation_id', 'payload'];
 
+    public function __construct(private readonly OutboxRouteRegistry $routes)
+    {
+    }
+
     /** @throws BrokerTransportException */
     public function encode(BrokerEnvelope $envelope): AMQPMessage
     {
-        if (!$envelope->payload instanceof TelegramUpdateReceivedPayload) {
+        if (!$this->payloadCodec($envelope->messageType, $envelope->schemaVersion)->accepts($envelope->payload)) {
             throw new BrokerTransportException(BrokerTransportErrorCode::INVALID_ENVELOPE);
         }
         try {
@@ -62,8 +67,6 @@ final class BrokerEnvelopeCodec
             if (!$fields instanceof stdClass || count(get_object_vars($fields)) !== count(self::FIELDS)
                 || array_diff(array_keys(get_object_vars($fields)), self::FIELDS) !== []
                 || !$fields->payload instanceof stdClass
-                || array_keys(get_object_vars($fields->payload)) !== ['update_id']
-                || !is_string($fields->payload->update_id)
                 || strlen(json_encode($fields->payload, JSON_THROW_ON_ERROR, 16)) > 1024
             ) {
                 throw new BrokerTransportException(BrokerTransportErrorCode::INVALID_ENVELOPE);
@@ -100,10 +103,21 @@ final class BrokerEnvelopeCodec
                 $fields->message_type,
                 $fields->schema_version,
                 $fields->correlation_id,
-                new TelegramUpdateReceivedPayload($fields->payload->update_id),
+                $this->payloadCodec($fields->message_type, $fields->schema_version)->decode(get_object_vars($fields->payload)),
             );
         } catch (JsonException | OutboxWriteException) {
             throw new BrokerTransportException(BrokerTransportErrorCode::INVALID_ENVELOPE);
         }
+    }
+
+    private function payloadCodec(string $messageType, string $schemaVersion): IOutboxPayloadCodec
+    {
+        $route = $this->routes->find($messageType, $schemaVersion)
+            ?? $this->routes->forRoutingKey('critical')[0] ?? null;
+        if ($route === null) {
+            throw new BrokerTransportException(BrokerTransportErrorCode::INVALID_ENVELOPE);
+        }
+
+        return $route->payloadCodec;
     }
 }

@@ -13,10 +13,10 @@ use modules\platform\application\dto\OutboxWriteIntent;
 use modules\platform\application\enum\OutboxMaintenanceError;
 use modules\platform\application\enum\OutboxRelayError;
 use modules\platform\application\exception\OutboxMaintenanceException;
-use modules\platform\application\message\TelegramUpdateReceivedPayload;
+use modules\telegram\application\message\TelegramUpdateReceivedPayload;
 use modules\platform\application\policy\OutboxRetryPolicy;
 use modules\platform\application\port\IRetryJitter;
-use modules\platform\application\route\OutboxRouteRegistry;
+use tests\fixtures\platform\TestOutboxRoutes;
 use modules\platform\infrastructure\db\DbOutboxRecoveryStore;
 use modules\platform\infrastructure\db\DbOutboxRelayStore;
 use modules\platform\infrastructure\db\DbOutboxWriter;
@@ -303,7 +303,7 @@ final class OutboxRecoveryIntegrationTest extends Unit
     {
         $transaction = $this->db->beginTransaction();
         $updateId = Uuid::uuid7()->toString();
-        $receipt = (new DbOutboxWriter($this->db, new OutboxRouteRegistry()))->write(new OutboxWriteIntent(
+        $receipt = (new DbOutboxWriter($this->db, TestOutboxRoutes::registry()))->write(new OutboxWriteIntent(
             'Telegram',
             'telegram.update.received',
             '1.0',
@@ -339,7 +339,7 @@ final class OutboxRecoveryIntegrationTest extends Unit
     {
         return new DbOutboxRelayStore(
             $this->db,
-            new OutboxRelayRowMapper(new OutboxRouteRegistry()),
+            new OutboxRelayRowMapper(TestOutboxRoutes::registry()),
             new RamseyOutboxLeaseTokenGenerator(),
         );
     }
@@ -356,7 +356,7 @@ final class OutboxRecoveryIntegrationTest extends Unit
 
         return new DbOutboxRecoveryStore(
             $db ?? $this->db,
-            new OutboxRelayRowMapper(new OutboxRouteRegistry()),
+            new OutboxRelayRowMapper(TestOutboxRoutes::registry()),
             new OutboxRetryPolicy($settings, $jitter),
         );
     }

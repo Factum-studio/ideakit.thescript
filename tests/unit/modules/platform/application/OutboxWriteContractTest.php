@@ -11,7 +11,7 @@ use modules\platform\application\dto\OutboxWriteReceipt;
 use modules\platform\application\enum\OutboxWriteFailure;
 use modules\platform\application\enum\OutboxWriteOutcome;
 use modules\platform\application\exception\OutboxWriteException;
-use modules\platform\application\message\TelegramUpdateReceivedPayload;
+use modules\telegram\application\message\TelegramUpdateReceivedPayload;
 use ReflectionClass;
 use ReflectionProperty;
 use TypeError;

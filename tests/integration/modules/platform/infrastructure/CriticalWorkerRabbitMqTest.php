@@ -10,9 +10,9 @@ use modules\platform\application\dto\BrokerEnvelope;
 use modules\platform\application\dto\OutboxRelaySettings;
 use modules\platform\application\dto\OutboxWriteIntent;
 use modules\platform\application\handler\RelayOutboxHandler;
-use modules\platform\application\message\TelegramUpdateReceivedPayload;
+use modules\telegram\application\message\TelegramUpdateReceivedPayload;
 use modules\platform\application\policy\OutboxRetryPolicy;
-use modules\platform\application\route\OutboxRouteRegistry;
+use tests\fixtures\platform\TestOutboxRoutes;
 use modules\platform\infrastructure\db\DbOutboxRelayStore;
 use modules\platform\infrastructure\db\DbOutboxWriter;
 use modules\platform\infrastructure\db\OutboxRelayRowMapper;
@@ -109,7 +109,7 @@ final class CriticalWorkerRabbitMqTest extends Unit
     {
         $this->withTopology(function (): void {
             $message = $this->originalFromWriterAndRelay();
-            (new RabbitMqPublisher(RabbitMqTestEnvironment::factory(), new BrokerEnvelopeCodec(), 5.0))->publish($message);
+            (new RabbitMqPublisher(RabbitMqTestEnvironment::factory(), new BrokerEnvelopeCodec(TestOutboxRoutes::registry()), 5.0, TestOutboxRoutes::registry()))->publish($message);
             $process = $this->runWorker('normal', 2);
             self::assertSame(0, $process->getExitCode());
             self::assertStringContainsString('completed=1 already_completed=1', $process->getOutput());
@@ -141,13 +141,14 @@ final class CriticalWorkerRabbitMqTest extends Unit
                 if ($malformed) {
                     $channel->basic_publish(new AMQPMessage('{', ['delivery_mode' => 2]), 'ideakit.commands', 'critical', true);
                 } else {
-                    (new RabbitMqPublisher(RabbitMqTestEnvironment::factory(), new BrokerEnvelopeCodec(), 5.0))->publish(new BrokerEnvelope(
+                    $unknown = (new BrokerEnvelopeCodec(TestOutboxRoutes::registry()))->encode(new BrokerEnvelope(
                         Uuid::uuid7()->toString(),
                         'future.command',
                         '2.0',
                         $message->correlationId,
                         $message->payload,
                     ));
+                    $channel->basic_publish($unknown, 'ideakit.commands', 'critical', true);
                 }
             } finally {
                 $connection->close();
@@ -227,7 +228,7 @@ final class CriticalWorkerRabbitMqTest extends Unit
         $updateId = Uuid::uuid7()->toString();
         $correlationId = Uuid::uuid7()->toString();
         $transaction = $this->db->beginTransaction();
-        $id = (new DbOutboxWriter($this->db, new OutboxRouteRegistry()))->write(new OutboxWriteIntent(
+        $id = (new DbOutboxWriter($this->db, TestOutboxRoutes::registry()))->write(new OutboxWriteIntent(
             'Telegram',
             'telegram.update.received',
             '1.0',
@@ -241,8 +242,8 @@ final class CriticalWorkerRabbitMqTest extends Unit
         $this->ownedIds[] = $id;
         $settings = new OutboxRelaySettings(5, 600, 15, 900);
         $receipt = (new RelayOutboxHandler(
-            new DbOutboxRelayStore($this->db, new OutboxRelayRowMapper(new OutboxRouteRegistry()), new RamseyOutboxLeaseTokenGenerator()),
-            new RabbitMqPublisher(RabbitMqTestEnvironment::factory(), new BrokerEnvelopeCodec(), 5.0),
+            new DbOutboxRelayStore($this->db, new OutboxRelayRowMapper(TestOutboxRoutes::registry()), new RamseyOutboxLeaseTokenGenerator()),
+            new RabbitMqPublisher(RabbitMqTestEnvironment::factory(), new BrokerEnvelopeCodec(TestOutboxRoutes::registry()), 5.0, TestOutboxRoutes::registry()),
             $settings,
             new OutboxRetryPolicy($settings, new SecureRetryJitter()),
         ))->handle(new RelayOutboxCommand(1));

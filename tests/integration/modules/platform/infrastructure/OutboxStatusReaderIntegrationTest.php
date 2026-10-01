@@ -8,8 +8,8 @@ use Codeception\Test\Unit;
 use modules\platform\application\dto\OutboxWriteIntent;
 use modules\platform\application\enum\OutboxMaintenanceError;
 use modules\platform\application\exception\OutboxMaintenanceException;
-use modules\platform\application\message\TelegramUpdateReceivedPayload;
-use modules\platform\application\route\OutboxRouteRegistry;
+use modules\telegram\application\message\TelegramUpdateReceivedPayload;
+use tests\fixtures\platform\TestOutboxRoutes;
 use modules\platform\infrastructure\db\DbOutboxStatusReader;
 use modules\platform\infrastructure\db\DbOutboxWriter;
 use Ramsey\Uuid\Uuid;
@@ -105,7 +105,7 @@ final class OutboxStatusReaderIntegrationTest extends Unit
     {
         $aggregateId = Uuid::uuid7()->toString();
         $transaction = $this->db->beginTransaction();
-        $receipt = (new DbOutboxWriter($this->db, new OutboxRouteRegistry()))->write(new OutboxWriteIntent(
+        $receipt = (new DbOutboxWriter($this->db, TestOutboxRoutes::registry()))->write(new OutboxWriteIntent(
             'Telegram',
             'telegram.update.received',
             '1.0',

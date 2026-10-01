@@ -46,6 +46,8 @@ use modules\platform\application\port\IBrokerReceiver;
 use modules\platform\application\port\IBrokerTopology;
 use modules\platform\application\port\IOutboxWriter;
 use modules\platform\application\route\OutboxRouteRegistry;
+use modules\platform\application\route\OutboxRoute;
+use modules\telegram\infrastructure\messaging\TelegramUpdateReceivedPayloadCodec;
 use modules\platform\infrastructure\db\DbOutboxWriter;
 use modules\platform\infrastructure\db\DbWorkerExecutionGuard;
 use modules\platform\infrastructure\config\CriticalWorkerConfig;
@@ -155,13 +157,26 @@ $container->setSingleton(ITelegramIdentityProfileIdGenerator::class, function ()
 });
 
 // ---------- Platform outbox ----------
-$container->setSingleton(IOutboxWriter::class, function () {
+$container->setSingleton(OutboxRouteRegistry::class, static function (): OutboxRouteRegistry {
+    return new OutboxRouteRegistry([new OutboxRoute(
+        'Telegram',
+        'telegram.update.received',
+        '1.0',
+        'TELEGRAM_UPDATE',
+        'RABBITMQ',
+        'critical',
+        1024,
+        new TelegramUpdateReceivedPayloadCodec(),
+    )]);
+});
+
+$container->setSingleton(IOutboxWriter::class, function () use ($container) {
     $db = Yii::$app->get('db');
     if (!$db instanceof Connection) {
         throw new RuntimeException('Application database connection is not configured.');
     }
 
-    return new DbOutboxWriter($db, new OutboxRouteRegistry());
+    return new DbOutboxWriter($db, $container->get(OutboxRouteRegistry::class));
 });
 
 // ---------- Platform broker ----------
@@ -180,15 +195,16 @@ $container->setSingleton(IBrokerTopology::class, static function () use ($contai
 $container->setSingleton(IBrokerPublisher::class, static function () use ($container): IBrokerPublisher {
     return new RabbitMqPublisher(
         $container->get(RabbitMqConnectionFactory::class),
-        new BrokerEnvelopeCodec(),
+        new BrokerEnvelopeCodec($container->get(OutboxRouteRegistry::class)),
         $container->get(RabbitMqConnectionConfig::class)->confirmTimeout,
+        $container->get(OutboxRouteRegistry::class),
     );
 });
 
 $container->set(IBrokerReceiver::class, static function () use ($container): IBrokerReceiver {
     return new RabbitMqReceiver(
         $container->get(RabbitMqConnectionFactory::class),
-        new BrokerEnvelopeCodec(),
+        new BrokerEnvelopeCodec($container->get(OutboxRouteRegistry::class)),
         $container->get(RabbitMqConnectionConfig::class)->consumerPollTimeout,
     );
 });
@@ -202,13 +218,13 @@ $container->setSingleton(OutboxRelayConfig::class, static function (): OutboxRel
     return require __DIR__ . '/outbox_relay.php';
 });
 
-$container->setSingleton(IOutboxRelayStore::class, static function (): IOutboxRelayStore {
+$container->setSingleton(IOutboxRelayStore::class, static function () use ($container): IOutboxRelayStore {
     $db = Yii::$app->get('db');
     if (!$db instanceof Connection) {
         throw new RuntimeException('Application database connection is not configured.');
     }
 
-    return new DbOutboxRelayStore($db, new OutboxRelayRowMapper(new OutboxRouteRegistry()), new RamseyOutboxLeaseTokenGenerator());
+    return new DbOutboxRelayStore($db, new OutboxRelayRowMapper($container->get(OutboxRouteRegistry::class)), new RamseyOutboxLeaseTokenGenerator());
 });
 
 $container->set(RelayOutboxHandler::class, static function () use ($container): RelayOutboxHandler {
@@ -241,7 +257,7 @@ $container->setSingleton(IOutboxRecoveryStore::class, static function () use ($c
 
     return new DbOutboxRecoveryStore(
         $db,
-        new OutboxRelayRowMapper(new OutboxRouteRegistry()),
+        new OutboxRelayRowMapper($container->get(OutboxRouteRegistry::class)),
         new OutboxRetryPolicy($settings, new SecureRetryJitter()),
     );
 });
@@ -297,8 +313,8 @@ $container->setSingleton(CriticalWorkerConfig::class, static function () use ($c
     return CriticalWorkerConfig::fromEnvironment($_ENV, $container->get(RabbitMqConnectionConfig::class));
 });
 
-$container->set(BackgroundCommandRegistry::class, static function (): BackgroundCommandRegistry {
-    return new BackgroundCommandRegistry([]);
+$container->set(BackgroundCommandRegistry::class, static function () use ($container): BackgroundCommandRegistry {
+    return new BackgroundCommandRegistry([], $container->get(OutboxRouteRegistry::class));
 });
 
 $container->set(IWorkerRuntime::class, static function (): IWorkerRuntime {
@@ -324,7 +340,7 @@ $container->set(RunCriticalWorkerHandler::class, static function () use ($contai
     return new RunCriticalWorkerHandler(
         new RabbitMqReceiver(
             $container->get(RabbitMqConnectionFactory::class),
-            new BrokerEnvelopeCodec(),
+            new BrokerEnvelopeCodec($container->get(OutboxRouteRegistry::class)),
             $container->get(RabbitMqConnectionConfig::class)->consumerPollTimeout,
             $settings->handlerTimeoutSeconds,
         ),

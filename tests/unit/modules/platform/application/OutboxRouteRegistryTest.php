@@ -9,8 +9,11 @@ use modules\platform\application\dto\OutboxWriteIntent;
 use modules\platform\application\enum\OutboxWriteFailure;
 use modules\platform\application\exception\OutboxWriteException;
 use modules\platform\application\message\IOutboxPayload;
-use modules\platform\application\message\TelegramUpdateReceivedPayload;
+use modules\platform\application\route\OutboxRoute;
+use modules\telegram\application\message\TelegramUpdateReceivedPayload;
 use modules\platform\application\route\OutboxRouteRegistry;
+use InvalidArgumentException;
+use tests\fixtures\platform\TestOutboxRoutes;
 
 final class OutboxRouteRegistryTest extends Unit
 {
@@ -20,15 +23,52 @@ final class OutboxRouteRegistryTest extends Unit
     public function testResolvesTheOnlyApprovedRoute(): void
     {
         $intent = self::intent();
-        $route = (new OutboxRouteRegistry())->resolve($intent);
+        $route = TestOutboxRoutes::registry()->resolve($intent);
 
         self::assertSame('RABBITMQ', $route->destination);
         self::assertSame('critical', $route->routingKey);
         self::assertSame(1024, $route->maximumPayloadBytes);
+        self::assertSame('Telegram', $route->ownerModule);
+        self::assertSame('telegram.update.received', $route->messageType);
+        self::assertSame('1.0', $route->schemaVersion);
+        self::assertSame('TELEGRAM_UPDATE', $route->aggregateType);
         self::assertLessThanOrEqual(
             $route->maximumPayloadBytes,
             strlen(json_encode($intent->payload->technicalFields(), JSON_THROW_ON_ERROR)),
         );
+    }
+
+    public function testRegistryRequiresExplicitNonemptyRoutes(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('outbox_route_invalid');
+
+        new OutboxRouteRegistry([]);
+    }
+
+    /** @dataProvider conflictingRegistrations */
+    public function testRejectsDuplicateOrContradictoryRegistration(OutboxRoute $other): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('outbox_route_invalid');
+
+        new OutboxRouteRegistry([TestOutboxRoutes::telegram(), $other]);
+    }
+
+    /** @return iterable<string, array{OutboxRoute}> */
+    public static function conflictingRegistrations(): iterable
+    {
+        yield 'duplicate' => [TestOutboxRoutes::telegram()];
+        yield 'contradictory metadata' => [new OutboxRoute(
+            'Other',
+            'telegram.update.received',
+            '1.0',
+            'TELEGRAM_UPDATE',
+            'RABBITMQ',
+            'critical',
+            1024,
+            TestOutboxRoutes::telegram()->payloadCodec,
+        )];
     }
 
     /**
@@ -41,7 +81,7 @@ final class OutboxRouteRegistryTest extends Unit
         $this->expectException(OutboxWriteException::class);
         $this->expectExceptionMessage(OutboxWriteFailure::UNSUPPORTED_ROUTE->value);
 
-        (new OutboxRouteRegistry())->resolve(self::intent($changes));
+        TestOutboxRoutes::registry()->resolve(self::intent($changes));
     }
 
     /** @return iterable<string, array{array<string, string>}> */
@@ -58,7 +98,7 @@ final class OutboxRouteRegistryTest extends Unit
         $this->expectException(OutboxWriteException::class);
         $this->expectExceptionMessage(OutboxWriteFailure::INVALID_INTENT->value);
 
-        (new OutboxRouteRegistry())->resolve(self::intent(['aggregateId' => self::OTHER_UPDATE_ID]));
+        TestOutboxRoutes::registry()->resolve(self::intent(['aggregateId' => self::OTHER_UPDATE_ID]));
     }
 
     public function testRejectsAlternativePayloadWithExtraFields(): void
@@ -81,7 +121,7 @@ final class OutboxRouteRegistryTest extends Unit
         $this->expectException(OutboxWriteException::class);
         $this->expectExceptionMessage(OutboxWriteFailure::UNSUPPORTED_ROUTE->value);
 
-        (new OutboxRouteRegistry())->resolve(self::intent(payload: $payload));
+        TestOutboxRoutes::registry()->resolve(self::intent(payload: $payload));
     }
 
     /**

@@ -11,9 +11,10 @@ use modules\platform\application\enum\BackgroundCommandOutcome;
 use modules\platform\application\enum\CriticalWorkerError;
 use modules\platform\application\exception\BackgroundCommandRejectedException;
 use modules\platform\application\exception\CriticalWorkerException;
-use modules\platform\application\message\TelegramUpdateReceivedPayload;
+use modules\telegram\application\message\TelegramUpdateReceivedPayload;
 use modules\platform\application\port\IBackgroundCommandHandler;
 use modules\platform\application\route\BackgroundCommandRegistry;
+use tests\fixtures\platform\TestOutboxRoutes;
 
 final class BackgroundCommandRegistryTest extends Unit
 {
@@ -32,7 +33,7 @@ final class BackgroundCommandRegistryTest extends Unit
         $handler->expects(self::once())->method('handle')->with(self::identicalTo($message))->willReturn($expected);
         $registry = new BackgroundCommandRegistry([
             new BackgroundCommandRegistration($message->messageType, $message->schemaVersion, $handler),
-        ]);
+        ], TestOutboxRoutes::registry());
 
         $registry->assertCriticalRouteRegistered();
         $resolved = $registry->requireHandler($message->messageType, $message->schemaVersion);
@@ -56,7 +57,7 @@ final class BackgroundCommandRegistryTest extends Unit
             new BackgroundCommandRegistration('telegram.update.received', '2.0', $second),
             new BackgroundCommandRegistration('synthetic/command', '1.0', $first),
             new BackgroundCommandRegistration('synthetic', 'command/1.0', $second),
-        ]);
+        ], TestOutboxRoutes::registry());
 
         self::assertSame($first, $registry->requireHandler('telegram.update.received', '1.0'));
         self::assertSame($second, $registry->requireHandler('telegram.update.received', '2.0'));
@@ -69,7 +70,7 @@ final class BackgroundCommandRegistryTest extends Unit
         $handler = $this->createMock(IBackgroundCommandHandler::class);
         $type = str_repeat('я', 64);
         $version = str_repeat('в', 48);
-        $registry = new BackgroundCommandRegistry([new BackgroundCommandRegistration($type, $version, $handler)]);
+        $registry = new BackgroundCommandRegistry([new BackgroundCommandRegistration($type, $version, $handler)], TestOutboxRoutes::registry());
 
         self::assertSame($handler, $registry->requireHandler($type, $version));
     }
@@ -117,7 +118,7 @@ final class BackgroundCommandRegistryTest extends Unit
         new BackgroundCommandRegistry([
             new BackgroundCommandRegistration('telegram.update.received', '1.0', $first),
             new BackgroundCommandRegistration('telegram.update.received', '1.0', $second),
-        ]);
+        ], TestOutboxRoutes::registry());
     }
 
     /** @dataProvider unsupportedContracts */
@@ -127,7 +128,7 @@ final class BackgroundCommandRegistryTest extends Unit
         $handler->expects(self::never())->method('handle');
         $registry = new BackgroundCommandRegistry([
             new BackgroundCommandRegistration('telegram.update.received', '1.0', $handler),
-        ]);
+        ], TestOutboxRoutes::registry());
         try {
             $registry->requireHandler($type, $version);
             self::fail('Unsupported contract was accepted.');
@@ -158,7 +159,7 @@ final class BackgroundCommandRegistryTest extends Unit
                 $this->createMock(IBackgroundCommandHandler::class),
             );
         }
-        $registry = new BackgroundCommandRegistry($registrations);
+        $registry = new BackgroundCommandRegistry($registrations, TestOutboxRoutes::registry());
         try {
             $registry->assertCriticalRouteRegistered();
             self::fail('Missing critical route was accepted.');

@@ -12,6 +12,7 @@ use modules\platform\application\port\IBrokerReceiver;
 use modules\platform\application\port\IWorkerExecutionGuard;
 use modules\platform\application\port\IWorkerRuntime;
 use modules\platform\application\route\BackgroundCommandRegistry;
+use tests\fixtures\platform\TestOutboxRoutes;
 use modules\platform\infrastructure\process\PcntlWorkerRuntime;
 use modules\platform\presentation\console\CriticalWorkerController;
 use Psr\Log\NullLogger;
@@ -83,7 +84,7 @@ final class PlatformCriticalWorkerContainerBindingsTest extends Unit
         $receiver->expects(self::never())->method('receive');
         $handler = new RunCriticalWorkerHandler(
             $receiver,
-            new BackgroundCommandRegistry([]),
+            new BackgroundCommandRegistry([], TestOutboxRoutes::registry()),
             $runtime,
             $this->createMock(IWorkerExecutionGuard::class),
             new CriticalWorkerSettings(4, 10, 1, 256, 192, 10),

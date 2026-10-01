@@ -18,7 +18,7 @@ use modules\platform\application\enum\OutboxRelayError;
 use modules\platform\application\exception\BrokerTransportException;
 use modules\platform\application\exception\OutboxRelayException;
 use modules\platform\application\handler\RelayOutboxHandler;
-use modules\platform\application\message\TelegramUpdateReceivedPayload;
+use modules\telegram\application\message\TelegramUpdateReceivedPayload;
 use modules\platform\application\policy\OutboxRetryPolicy;
 use modules\platform\application\port\IBrokerPublisher;
 use modules\platform\application\port\IOutboxRelayStore;

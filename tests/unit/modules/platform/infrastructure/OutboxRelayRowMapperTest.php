@@ -10,7 +10,7 @@ use modules\platform\application\dto\OutboxRelayClaim;
 use modules\platform\application\dto\OutboxRelayDecision;
 use modules\platform\application\enum\OutboxRelayError;
 use modules\platform\application\exception\OutboxRelayException;
-use modules\platform\application\route\OutboxRouteRegistry;
+use tests\fixtures\platform\TestOutboxRoutes;
 use modules\platform\infrastructure\db\OutboxRelayRowMapper;
 
 final class OutboxRelayRowMapperTest extends Unit
@@ -78,7 +78,7 @@ final class OutboxRelayRowMapperTest extends Unit
 
     public function testAppendsOneCompletedAttemptWithoutRewritingEarlierEntries(): void
     {
-        $mapper = new OutboxRelayRowMapper(new OutboxRouteRegistry());
+        $mapper = new OutboxRelayRowMapper(TestOutboxRoutes::registry());
         $row = array_replace(self::row(), [
             'attempt_count' => 2,
             'attempt_history' => json_encode(self::history(), JSON_THROW_ON_ERROR),
@@ -104,7 +104,7 @@ final class OutboxRelayRowMapperTest extends Unit
     public function testClosesInterruptedAttemptWithoutRewritingHistory(OutboxRelayDecision $decision): void
     {
         $history = self::history();
-        $completed = (new OutboxRelayRowMapper(new OutboxRouteRegistry()))->completeExpiredHistory(
+        $completed = (new OutboxRelayRowMapper(TestOutboxRoutes::registry()))->completeExpiredHistory(
             json_encode($history, JSON_THROW_ON_ERROR),
             2,
             new DateTimeImmutable('2026-09-28T12:00:00+05:00'),
@@ -133,7 +133,7 @@ final class OutboxRelayRowMapperTest extends Unit
 
     public function testClosesFirstInterruptedAttemptFromEmptyHistory(): void
     {
-        $completed = (new OutboxRelayRowMapper(new OutboxRouteRegistry()))->completeExpiredHistory(
+        $completed = (new OutboxRelayRowMapper(TestOutboxRoutes::registry()))->completeExpiredHistory(
             '{"schema_version":"1.0","attempts":[]}',
             1,
             new DateTimeImmutable('2026-09-28T07:00:00Z'),
@@ -151,7 +151,7 @@ final class OutboxRelayRowMapperTest extends Unit
     {
         $json = json_encode(self::history(), JSON_THROW_ON_ERROR);
 
-        self::assertNull((new OutboxRelayRowMapper(new OutboxRouteRegistry()))->completeExpiredHistory(
+        self::assertNull((new OutboxRelayRowMapper(TestOutboxRoutes::registry()))->completeExpiredHistory(
             $json,
             1,
             new DateTimeImmutable('2026-09-28T12:00:00+05:00'),
@@ -165,7 +165,7 @@ final class OutboxRelayRowMapperTest extends Unit
         $this->expectException(OutboxRelayException::class);
         $this->expectExceptionMessage('invalid_message');
 
-        (new OutboxRelayRowMapper(new OutboxRouteRegistry()))->completeExpiredHistory(
+        (new OutboxRelayRowMapper(TestOutboxRoutes::registry()))->completeExpiredHistory(
             json_encode(self::history(), JSON_THROW_ON_ERROR),
             1,
             new DateTimeImmutable('2026-09-28T12:00:00+05:00'),
@@ -180,7 +180,7 @@ final class OutboxRelayRowMapperTest extends Unit
         $this->expectException(OutboxRelayException::class);
         $this->expectExceptionMessage('invalid_message');
 
-        (new OutboxRelayRowMapper(new OutboxRouteRegistry()))->completeExpiredHistory(
+        (new OutboxRelayRowMapper(TestOutboxRoutes::registry()))->completeExpiredHistory(
             $json,
             $attemptCount,
             new DateTimeImmutable('2026-09-28T12:00:00+05:00'),
@@ -203,7 +203,7 @@ final class OutboxRelayRowMapperTest extends Unit
         $row = array_replace(self::row(), ['attempt_count' => 1, 'attempt_history' => $json]);
         $claim = $this->claim($row);
         self::assertSame(OutboxRelayError::INVALID_MESSAGE, $claim->rejection);
-        self::assertSame($json, (new OutboxRelayRowMapper(new OutboxRouteRegistry()))->completeHistory(
+        self::assertSame($json, (new OutboxRelayRowMapper(TestOutboxRoutes::registry()))->completeHistory(
             $json,
             $claim,
             OutboxRelayDecision::failed(OutboxRelayError::INVALID_MESSAGE),
@@ -233,7 +233,7 @@ final class OutboxRelayRowMapperTest extends Unit
     /** @param array<string, mixed> $row */
     private function claim(array $row): OutboxRelayClaim
     {
-        return (new OutboxRelayRowMapper(new OutboxRouteRegistry()))->claim(
+        return (new OutboxRelayRowMapper(TestOutboxRoutes::registry()))->claim(
             $row,
             'synthetic-token',
             5,

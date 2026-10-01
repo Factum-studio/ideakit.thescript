@@ -14,7 +14,7 @@ use modules\platform\application\dto\OutboxRelayReceipt;
 use modules\platform\application\dto\OutboxRelaySettings;
 use modules\platform\application\enum\OutboxRelayError;
 use modules\platform\application\exception\OutboxRelayException;
-use modules\platform\application\message\TelegramUpdateReceivedPayload;
+use modules\telegram\application\message\TelegramUpdateReceivedPayload;
 
 final class OutboxRelayContractsTest extends Unit
 {

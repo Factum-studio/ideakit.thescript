@@ -5,6 +5,7 @@ declare(strict_types=1);
 use modules\platform\application\dto\BackgroundCommandRegistration;
 use modules\platform\application\port\IOutboxWriter;
 use modules\platform\application\route\BackgroundCommandRegistry;
+use modules\platform\application\route\OutboxRouteRegistry;
 use tests\fixtures\platform\CriticalWorkerTestEnvironment;
 use tests\fixtures\platform\PersistedTestCommandHandler;
 use yii\console\Application;
@@ -27,7 +28,7 @@ try {
     Yii::$container->set(BackgroundCommandRegistry::class, static function () use ($handler): BackgroundCommandRegistry {
         return new BackgroundCommandRegistry([
             new BackgroundCommandRegistration('telegram.update.received', '1.0', $handler),
-        ]);
+        ], Yii::$container->get(OutboxRouteRegistry::class));
     });
 } catch (Throwable) {
     fwrite(STDERR, "configuration_invalid\n");

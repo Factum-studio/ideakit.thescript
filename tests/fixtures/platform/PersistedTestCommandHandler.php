@@ -9,7 +9,7 @@ use modules\platform\application\dto\OutboxWriteIntent;
 use modules\platform\application\enum\BackgroundCommandOutcome;
 use modules\platform\application\enum\OutboxWriteOutcome;
 use modules\platform\application\exception\BackgroundCommandRejectedException;
-use modules\platform\application\message\TelegramUpdateReceivedPayload;
+use modules\telegram\application\message\TelegramUpdateReceivedPayload;
 use modules\platform\application\port\IBackgroundCommandHandler;
 use modules\platform\application\port\IOutboxWriter;
 use Ramsey\Uuid\Uuid;

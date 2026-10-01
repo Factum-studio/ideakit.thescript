@@ -18,13 +18,14 @@ use modules\platform\application\exception\BackgroundCommandRejectedException;
 use modules\platform\application\exception\BrokerTransportException;
 use modules\platform\application\exception\CriticalWorkerException;
 use modules\platform\application\handler\RunCriticalWorkerHandler;
-use modules\platform\application\message\TelegramUpdateReceivedPayload;
+use modules\telegram\application\message\TelegramUpdateReceivedPayload;
 use modules\platform\application\port\IBackgroundCommandHandler;
 use modules\platform\application\port\IBrokerDelivery;
 use modules\platform\application\port\IBrokerReceiver;
 use modules\platform\application\port\IWorkerExecutionGuard;
 use modules\platform\application\port\IWorkerRuntime;
 use modules\platform\application\route\BackgroundCommandRegistry;
+use tests\fixtures\platform\TestOutboxRoutes;
 use PHPUnit\Framework\MockObject\MockObject;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
@@ -249,7 +250,7 @@ final class RunCriticalWorkerHandlerTest extends Unit
         $this->receiver->expects(self::never())->method('receive');
         $this->runtime->expects(self::never())->method('start');
 
-        $this->assertFailure(CriticalWorkerError::HANDLER_MISSING, new BackgroundCommandRegistry([]));
+        $this->assertFailure(CriticalWorkerError::HANDLER_MISSING, new BackgroundCommandRegistry([], TestOutboxRoutes::registry()));
         $this->assertCleanup();
     }
 
@@ -441,7 +442,7 @@ final class RunCriticalWorkerHandlerTest extends Unit
             $this->receiver,
             $registry ?? new BackgroundCommandRegistry([
                 new BackgroundCommandRegistration('telegram.update.received', '1.0', $this->background),
-            ]),
+            ], TestOutboxRoutes::registry()),
             $this->runtime,
             $this->guard,
             new CriticalWorkerSettings(4, 10, 1, 256, 192, 10),

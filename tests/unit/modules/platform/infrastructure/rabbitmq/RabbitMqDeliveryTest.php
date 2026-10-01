@@ -8,6 +8,7 @@ use Codeception\Test\Unit;
 use modules\platform\application\enum\BrokerTransportErrorCode;
 use modules\platform\application\exception\BrokerTransportException;
 use modules\platform\infrastructure\rabbitmq\BrokerEnvelopeCodec;
+use tests\fixtures\platform\TestOutboxRoutes;
 use modules\platform\infrastructure\rabbitmq\RabbitMqDelivery;
 use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Exception\AMQPConnectionClosedException;
@@ -31,7 +32,7 @@ final class RabbitMqDeliveryTest extends Unit
             ->willThrowException(new AMQPConnectionClosedException('synthetic-private-context'));
         $message = new AMQPMessage();
         $message->setChannel($channel)->setDeliveryInfo(7, false, 'ideakit.commands', 'critical');
-        $delivery = new RabbitMqDelivery($message, new BrokerEnvelopeCodec(), static function () use (&$open, &$invalidations): void {
+        $delivery = new RabbitMqDelivery($message, new BrokerEnvelopeCodec(TestOutboxRoutes::registry()), static function () use (&$open, &$invalidations): void {
             $open = false;
             ++$invalidations;
         });

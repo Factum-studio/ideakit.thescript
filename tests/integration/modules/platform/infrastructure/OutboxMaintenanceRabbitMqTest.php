@@ -11,10 +11,10 @@ use modules\platform\application\dto\OutboxRelaySettings;
 use modules\platform\application\dto\OutboxWriteIntent;
 use modules\platform\application\exception\BrokerTransportException;
 use modules\platform\application\handler\RelayOutboxHandler;
-use modules\platform\application\message\TelegramUpdateReceivedPayload;
+use modules\telegram\application\message\TelegramUpdateReceivedPayload;
 use modules\platform\application\policy\OutboxRetryPolicy;
 use modules\platform\application\port\IRetryJitter;
-use modules\platform\application\route\OutboxRouteRegistry;
+use tests\fixtures\platform\TestOutboxRoutes;
 use modules\platform\infrastructure\db\DbOutboxPayloadCleanupStore;
 use modules\platform\infrastructure\db\DbOutboxRecoveryStore;
 use modules\platform\infrastructure\db\DbOutboxRelayStore;
@@ -168,8 +168,9 @@ final class OutboxMaintenanceRabbitMqTest extends Unit
                     1.0,
                     1.0,
                 )),
-                new BrokerEnvelopeCodec(),
+                new BrokerEnvelopeCodec(TestOutboxRoutes::registry()),
                 1.0,
+                TestOutboxRoutes::registry(),
             );
             try {
                 $unavailable->publish($claim->envelope);
@@ -215,7 +216,7 @@ final class OutboxMaintenanceRabbitMqTest extends Unit
     {
         $updateId = Uuid::uuid7()->toString();
         $transaction = $this->db->beginTransaction();
-        $id = (new DbOutboxWriter($this->db, new OutboxRouteRegistry()))->write(new OutboxWriteIntent(
+        $id = (new DbOutboxWriter($this->db, TestOutboxRoutes::registry()))->write(new OutboxWriteIntent(
             'Telegram',
             'telegram.update.received',
             '1.0',
@@ -244,7 +245,7 @@ final class OutboxMaintenanceRabbitMqTest extends Unit
     {
         return new DbOutboxRelayStore(
             $this->db,
-            new OutboxRelayRowMapper(new OutboxRouteRegistry()),
+            new OutboxRelayRowMapper(TestOutboxRoutes::registry()),
             new RamseyOutboxLeaseTokenGenerator(),
         );
     }
@@ -260,14 +261,14 @@ final class OutboxMaintenanceRabbitMqTest extends Unit
 
         return new DbOutboxRecoveryStore(
             $this->db,
-            new OutboxRelayRowMapper(new OutboxRouteRegistry()),
+            new OutboxRelayRowMapper(TestOutboxRoutes::registry()),
             new OutboxRetryPolicy($settings, $jitter),
         );
     }
 
     private function publisher(): RabbitMqPublisher
     {
-        return new RabbitMqPublisher(RabbitMqTestEnvironment::factory(), new BrokerEnvelopeCodec(), 5.0);
+        return new RabbitMqPublisher(RabbitMqTestEnvironment::factory(), new BrokerEnvelopeCodec(TestOutboxRoutes::registry()), 5.0, TestOutboxRoutes::registry());
     }
 
     private function worker(int $limit, string $scenario = 'normal'): Process

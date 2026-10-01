@@ -16,7 +16,6 @@ use modules\platform\application\enum\OutboxWriteFailure;
 use modules\platform\application\exception\BrokerTransportException;
 use modules\platform\application\exception\OutboxRelayException;
 use modules\platform\application\exception\OutboxWriteException;
-use modules\platform\application\message\TelegramUpdateReceivedPayload;
 use modules\platform\application\route\OutboxRouteRegistry;
 use stdClass;
 
@@ -160,10 +159,12 @@ final class OutboxRelayRowMapper
         }
         try {
             $payload = json_decode($row['payload'], false, 16, JSON_THROW_ON_ERROR);
-            if (!$payload instanceof stdClass || array_keys(get_object_vars($payload)) !== ['update_id']
-                || !is_string($payload->update_id)
-            ) {
+            if (!$payload instanceof stdClass) {
                 throw new OutboxRelayException(OutboxRelayError::INVALID_MESSAGE);
+            }
+            $route = $this->routes->find($row['message_type'], $row['schema_version']);
+            if ($route === null) {
+                throw new OutboxRelayException(OutboxRelayError::UNSUPPORTED_ROUTE);
             }
             $intent = new OutboxWriteIntent(
                 $row['owner_module'],
@@ -171,7 +172,7 @@ final class OutboxRelayRowMapper
                 $row['schema_version'],
                 $row['aggregate_type'],
                 $row['aggregate_id'],
-                new TelegramUpdateReceivedPayload($payload->update_id),
+                $route->payloadCodec->decode(get_object_vars($payload)),
                 $row['idempotency_key'],
                 $row['correlation_id'],
             );

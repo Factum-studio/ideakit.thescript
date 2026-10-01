@@ -9,9 +9,9 @@ use modules\platform\application\command\RelayOutboxCommand;
 use modules\platform\application\dto\OutboxRelaySettings;
 use modules\platform\application\dto\OutboxWriteIntent;
 use modules\platform\application\handler\RelayOutboxHandler;
-use modules\platform\application\message\TelegramUpdateReceivedPayload;
+use modules\telegram\application\message\TelegramUpdateReceivedPayload;
 use modules\platform\application\policy\OutboxRetryPolicy;
-use modules\platform\application\route\OutboxRouteRegistry;
+use tests\fixtures\platform\TestOutboxRoutes;
 use modules\platform\infrastructure\db\DbOutboxRelayStore;
 use modules\platform\infrastructure\db\DbOutboxWriter;
 use modules\platform\infrastructure\db\OutboxRelayRowMapper;
@@ -78,7 +78,7 @@ final class OutboxRelayRabbitMqTest extends Unit
             $update = Uuid::uuid7()->toString();
             $correlation = Uuid::uuid7()->toString();
             $transaction = $this->db->beginTransaction();
-            $this->ownedId = (new DbOutboxWriter($this->db, new OutboxRouteRegistry()))->write(new OutboxWriteIntent(
+            $this->ownedId = (new DbOutboxWriter($this->db, TestOutboxRoutes::registry()))->write(new OutboxWriteIntent(
                 'Telegram',
                 'telegram.update.received',
                 '1.0',
@@ -91,8 +91,8 @@ final class OutboxRelayRabbitMqTest extends Unit
             $transaction->commit();
             $settings = new OutboxRelaySettings(5, 600, 15, 900);
             $receipt = (new RelayOutboxHandler(
-                new DbOutboxRelayStore($this->db, new OutboxRelayRowMapper(new OutboxRouteRegistry()), new RamseyOutboxLeaseTokenGenerator()),
-                new RabbitMqPublisher($factory, new BrokerEnvelopeCodec(), 5.0),
+                new DbOutboxRelayStore($this->db, new OutboxRelayRowMapper(TestOutboxRoutes::registry()), new RamseyOutboxLeaseTokenGenerator()),
+                new RabbitMqPublisher($factory, new BrokerEnvelopeCodec(TestOutboxRoutes::registry()), 5.0, TestOutboxRoutes::registry()),
                 $settings,
                 new OutboxRetryPolicy($settings, new SecureRetryJitter()),
             ))->handle(new RelayOutboxCommand(1));
@@ -103,7 +103,7 @@ final class OutboxRelayRabbitMqTest extends Unit
             self::assertSame($routed ? null : 'unroutable', $row['last_error_code']);
             if ($routed) {
                 self::assertSame(1, $receipt->delivered);
-                $receiver = new RabbitMqReceiver($factory, new BrokerEnvelopeCodec(), 1.0);
+                $receiver = new RabbitMqReceiver($factory, new BrokerEnvelopeCodec(TestOutboxRoutes::registry()), 1.0);
                 $delivery = $receiver->receive(5.0);
                 self::assertNotNull($delivery);
                 $envelope = $delivery->message();
