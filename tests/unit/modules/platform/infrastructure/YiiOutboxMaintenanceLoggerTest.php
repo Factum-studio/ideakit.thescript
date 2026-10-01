@@ -36,6 +36,7 @@ final class YiiOutboxMaintenanceLoggerTest extends Unit
         $logger->warning('platform.outbox_maintenance.failed', [
             'operation' => 'clear_payload', 'reason' => 'persistence_failure',
             'exception' => new RuntimeException('synthetic-sensitive-input'),
+            'previous' => new RuntimeException('synthetic-inner-detail'),
         ]);
         self::assertSame([
             'event' => 'platform.outbox_maintenance.failed',

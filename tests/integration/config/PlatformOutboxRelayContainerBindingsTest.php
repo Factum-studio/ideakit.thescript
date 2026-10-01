@@ -101,7 +101,10 @@ final class PlatformOutboxRelayContainerBindingsTest extends Unit
     public function testConsoleOperationalFailureIsSafe(): void
     {
         $store = $this->createMock(IOutboxRelayStore::class);
-        $store->expects(self::once())->method('claimNext')->willThrowException(new OutboxRelayException(OutboxRelayError::PERSISTENCE_FAILURE));
+        $store->expects(self::once())->method('claimNext')->willThrowException(new OutboxRelayException(
+            OutboxRelayError::PERSISTENCE_FAILURE,
+            new \RuntimeException('synthetic-private-detail'),
+        ));
         $controller = $this->controller($store);
         $controller->expects(self::never())->method('stdout');
         $controller->expects(self::once())->method('stderr')->with("Outbox relay failed: persistence_failure.\n");

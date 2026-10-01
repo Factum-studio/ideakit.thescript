@@ -77,9 +77,9 @@ SQL,
         } catch (OutboxMaintenanceException $exception) {
             $this->rollBack($transaction);
             throw $exception;
-        } catch (Throwable) {
+        } catch (Throwable $exception) {
             $this->rollBack($transaction);
-            throw new OutboxMaintenanceException(OutboxMaintenanceError::PERSISTENCE_FAILURE);
+            throw new OutboxMaintenanceException(OutboxMaintenanceError::PERSISTENCE_FAILURE, $exception);
         }
     }
 

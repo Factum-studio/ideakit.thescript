@@ -105,8 +105,11 @@ final class RunCriticalWorkerHandler
                                     $outcome = $handler->handle($message);
                                 } catch (BackgroundCommandRejectedException) {
                                     $rejection = 'handler_rejected';
-                                } catch (Throwable) {
-                                    throw new CriticalWorkerException(CriticalWorkerError::HANDLER_FAILURE);
+                                } catch (Throwable $exception) {
+                                    throw new CriticalWorkerException(
+                                        CriticalWorkerError::HANDLER_FAILURE,
+                                        $exception instanceof BrokerTransportException ? null : $exception,
+                                    );
                                 }
                             },
                         );
@@ -139,8 +142,11 @@ final class RunCriticalWorkerHandler
             }
         } catch (CriticalWorkerException $exception) {
             $failure = $exception;
-        } catch (Throwable) {
-            $failure = new CriticalWorkerException(CriticalWorkerError::TRANSPORT_FAILURE);
+        } catch (Throwable $exception) {
+            $failure = new CriticalWorkerException(
+                CriticalWorkerError::TRANSPORT_FAILURE,
+                $exception instanceof BrokerTransportException ? null : $exception,
+            );
         } finally {
             $failure = $this->cleanup($failure);
         }
@@ -198,25 +204,35 @@ final class RunCriticalWorkerHandler
             foreach ([$this->receiver, $this->guard] as $resource) {
                 try {
                     $resource->close();
-                } catch (Throwable) {
+                } catch (Throwable $exception) {
                     $cleanupFailed = true;
-                    $failure ??= new CriticalWorkerException(CriticalWorkerError::CLEANUP_FAILURE);
+                    $failure ??= new CriticalWorkerException(
+                        CriticalWorkerError::CLEANUP_FAILURE,
+                        $exception instanceof BrokerTransportException ? null : $exception,
+                    );
                 }
             }
-            if ($failure !== null) {
-                $context = ['reason' => $failure->error->value];
-                if ($cleanupFailed) {
-                    $context['cleanup_failed'] = true;
-                }
-                $this->logger->error('critical_worker.stopped', $context);
-            }
-        } catch (Throwable) {
-            $failure ??= new CriticalWorkerException(CriticalWorkerError::CLEANUP_FAILURE);
+        } catch (Throwable $exception) {
+            $cleanupFailed = true;
+            $failure ??= new CriticalWorkerException(CriticalWorkerError::CLEANUP_FAILURE, $exception);
         } finally {
             try {
                 $this->runtime->close();
+            } catch (Throwable $exception) {
+                $cleanupFailed = true;
+                $failure ??= new CriticalWorkerException(CriticalWorkerError::CLEANUP_FAILURE, $exception);
+            }
+        }
+
+        if ($failure !== null) {
+            $context = ['reason' => $failure->error->value];
+            if ($cleanupFailed) {
+                $context['cleanup_failed'] = true;
+            }
+            try {
+                $this->logger->error('critical_worker.stopped', $context);
             } catch (Throwable) {
-                $failure ??= new CriticalWorkerException(CriticalWorkerError::CLEANUP_FAILURE);
+                // Logging must not replace the original processing or cleanup failure.
             }
         }
 

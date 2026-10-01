@@ -167,7 +167,10 @@ final class PlatformOutboxMaintenanceContainerBindingsTest extends Unit
     {
         $recovery = $this->createMock(IOutboxRecoveryStore::class);
         $cleanup = $this->createMock(IOutboxPayloadCleanupStore::class);
-        $cleanup->method('clearDue')->willThrowException(new OutboxMaintenanceException(OutboxMaintenanceError::PERSISTENCE_FAILURE));
+        $cleanup->method('clearDue')->willThrowException(new OutboxMaintenanceException(
+            OutboxMaintenanceError::PERSISTENCE_FAILURE,
+            new \RuntimeException('synthetic-private-detail', 0, new \RuntimeException('synthetic-inner-detail')),
+        ));
         $logger = $this->createMock(LoggerInterface::class);
         $logger->expects(self::once())->method('warning')->with(
             'platform.outbox_maintenance.failed',

@@ -315,7 +315,13 @@ final class RelayOutboxHandlerTest extends Unit
         } catch (OutboxRelayException $exception) {
             self::assertSame($expected, $exception->error);
             self::assertSame($expected->value, $exception->getMessage());
-            self::assertNull($exception->getPrevious());
+            if ($failure instanceof OutboxRelayException) {
+                self::assertSame($failure, $exception);
+            }
+            self::assertSame(
+                $failure instanceof OutboxRelayException || $failure instanceof BrokerTransportException ? null : $failure,
+                $exception->getPrevious(),
+            );
         }
     }
 
@@ -365,7 +371,7 @@ final class RelayOutboxHandlerTest extends Unit
         } catch (OutboxRelayException $exception) {
             self::assertSame(OutboxRelayError::UNEXPECTED_FAILURE, $exception->error);
             self::assertSame('unexpected_failure', $exception->getMessage());
-            self::assertNull($exception->getPrevious());
+            self::assertSame('synthetic-randomness-detail', $exception->getPrevious()?->getMessage());
         }
     }
 

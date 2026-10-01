@@ -181,7 +181,23 @@ final class RunCriticalWorkerHandlerTest extends Unit
         $delivery->expects(self::never())->method('acknowledge');
         $delivery->expects(self::never())->method('reject');
 
-        $this->assertFailure(CriticalWorkerError::HANDLER_FAILURE);
+        $this->assertFailure(
+            CriticalWorkerError::HANDLER_FAILURE,
+            expectedPrevious: $failure instanceof BrokerTransportException ? null : $failure,
+        );
+        $this->assertCleanup();
+    }
+
+    public function testUnexpectedLocalReceiveFailureRetainsCauseWithoutLoggingIt(): void
+    {
+        $failure = new RuntimeException('synthetic-private-detail', 0, new RuntimeException('synthetic-inner-detail'));
+        $this->receiver->expects(self::once())->method('receive')->willThrowException($failure);
+        $this->logger->expects(self::once())->method('error')->with(
+            'critical_worker.stopped',
+            ['reason' => CriticalWorkerError::TRANSPORT_FAILURE->value],
+        );
+
+        $this->assertFailure(CriticalWorkerError::TRANSPORT_FAILURE, expectedPrevious: $failure);
         $this->assertCleanup();
     }
 
@@ -369,14 +385,16 @@ final class RunCriticalWorkerHandlerTest extends Unit
     {
         $delivery = $this->delivery();
         $this->receive($delivery);
+        $handlerFailure = new RuntimeException('synthetic-handler-detail');
         if ($primaryFailure) {
-            $this->background->expects(self::once())->method('handle')->willThrowException(new RuntimeException('synthetic'));
+            $this->background->expects(self::once())->method('handle')->willThrowException($handlerFailure);
         } else {
             $this->background->expects(self::once())->method('handle')->willReturn(BackgroundCommandOutcome::COMPLETED);
             $delivery->expects(self::once())->method('acknowledge');
         }
         $this->guard = $this->createMock(IWorkerExecutionGuard::class);
-        $this->guard->expects(self::once())->method('close')->willThrowException(new RuntimeException('synthetic'));
+        $cleanupFailure = new RuntimeException('synthetic-cleanup-detail');
+        $this->guard->expects(self::once())->method('close')->willThrowException($cleanupFailure);
         $this->runtime->expects(self::once())->method('close');
         $expected = $primaryFailure ? CriticalWorkerError::HANDLER_FAILURE : CriticalWorkerError::CLEANUP_FAILURE;
         $this->logger->expects(self::once())->method('error')
@@ -385,7 +403,7 @@ final class RunCriticalWorkerHandlerTest extends Unit
                 self::assertSame(10, $this->phase);
             });
 
-        $this->assertFailure($expected);
+        $this->assertFailure($expected, expectedPrevious: $primaryFailure ? $handlerFailure : $cleanupFailure);
     }
 
     /** @return iterable<string, array{bool}> */
@@ -393,6 +411,22 @@ final class RunCriticalWorkerHandlerTest extends Unit
     {
         yield 'primary failure preserved' => [true];
         yield 'successful effect is not a successful run' => [false];
+    }
+
+    public function testRuntimeCloseFailureKeepsPrimaryCauseAndReportsCleanupFailure(): void
+    {
+        $delivery = $this->delivery();
+        $this->receive($delivery);
+        $primary = new RuntimeException('synthetic-handler-detail');
+        $this->background->expects(self::once())->method('handle')->willThrowException($primary);
+        $this->runtime->expects(self::once())->method('close')
+            ->willThrowException(new RuntimeException('synthetic-close-detail'));
+        $this->logger->expects(self::once())->method('error')->with(
+            'critical_worker.stopped',
+            ['reason' => CriticalWorkerError::HANDLER_FAILURE->value, 'cleanup_failed' => true],
+        );
+
+        $this->assertFailure(CriticalWorkerError::HANDLER_FAILURE, expectedPrevious: $primary);
     }
 
     /** @dataProvider invalidLimits */
@@ -452,15 +486,18 @@ final class RunCriticalWorkerHandlerTest extends Unit
         );
     }
 
-    private function assertFailure(CriticalWorkerError $expected, ?BackgroundCommandRegistry $registry = null): void
-    {
+    private function assertFailure(
+        CriticalWorkerError $expected,
+        ?BackgroundCommandRegistry $registry = null,
+        ?Throwable $expectedPrevious = null,
+    ): void {
         try {
             $this->worker($registry)->handle(new RunCriticalWorkerCommand(1, 30));
             self::fail('Worker unexpectedly returned a successful receipt.');
         } catch (CriticalWorkerException $exception) {
             self::assertSame($expected, $exception->error);
             self::assertSame($expected->value, $exception->getMessage());
-            self::assertNull($exception->getPrevious());
+            self::assertSame($expectedPrevious, $exception->getPrevious());
         }
     }
 

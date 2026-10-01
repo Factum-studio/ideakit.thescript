@@ -26,6 +26,7 @@ final class YiiWorkerLoggerTest extends Unit
             'outbox_id' => '01890f4d-3c2a-7f48-8c0b-123456789ac4',
             'correlation_id' => 'not-a-uuid', 'exception' => new RuntimeException('synthetic-sensitive-input'),
             'payload' => 'synthetic-sensitive-input', 'sql' => 'synthetic-sensitive-input',
+            'previous' => new RuntimeException('synthetic-inner-detail'),
         ]);
         self::assertSame([
             'event' => 'critical_worker.stopped', 'reason' => 'handler_failure', 'cleanup_failed' => true,

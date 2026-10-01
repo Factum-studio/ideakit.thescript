@@ -56,8 +56,11 @@ final class RelayOutboxHandler
             return new OutboxRelayReceipt($claimed, $delivered, $retryScheduled, $failed, $leaseLost);
         } catch (OutboxRelayException $exception) {
             throw $exception;
-        } catch (Throwable) {
-            throw new OutboxRelayException(OutboxRelayError::UNEXPECTED_FAILURE);
+        } catch (Throwable $exception) {
+            throw new OutboxRelayException(
+                OutboxRelayError::UNEXPECTED_FAILURE,
+                $exception instanceof BrokerTransportException ? null : $exception,
+            );
         }
     }
 

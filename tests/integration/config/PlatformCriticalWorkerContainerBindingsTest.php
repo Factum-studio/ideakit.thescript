@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace tests\integration\config;
 
 use Codeception\Test\Unit;
+use modules\platform\application\dto\BackgroundCommandRegistration;
 use modules\platform\application\dto\CriticalWorkerSettings;
 use modules\platform\application\enum\CriticalWorkerError;
+use modules\platform\application\exception\CriticalWorkerException;
 use modules\platform\application\handler\RunCriticalWorkerHandler;
+use modules\platform\application\port\IBackgroundCommandHandler;
 use modules\platform\application\port\IBrokerReceiver;
 use modules\platform\application\port\IWorkerExecutionGuard;
 use modules\platform\application\port\IWorkerRuntime;
@@ -16,6 +19,7 @@ use tests\fixtures\platform\TestOutboxRoutes;
 use modules\platform\infrastructure\process\PcntlWorkerRuntime;
 use modules\platform\presentation\console\CriticalWorkerController;
 use Psr\Log\NullLogger;
+use RuntimeException;
 use Yii;
 use yii\db\Connection;
 use yii\di\Container;
@@ -74,6 +78,38 @@ final class PlatformCriticalWorkerContainerBindingsTest extends Unit
         $controller = $this->controller($runtime);
         $controller->expects(self::once())->method('stderr')->with(CriticalWorkerError::HANDLER_MISSING->value . "\n");
         $controller->expects(self::never())->method('stdout');
+        self::assertSame(1, $controller->actionCritical());
+    }
+
+    public function testLocalCauseIsNotRenderedToConsole(): void
+    {
+        $receiver = $this->createMock(IBrokerReceiver::class);
+        $receiver->expects(self::never())->method('receive');
+        $guard = $this->createMock(IWorkerExecutionGuard::class);
+        $guard->expects(self::once())->method('assertClean')->willThrowException(new CriticalWorkerException(
+            CriticalWorkerError::EXECUTION_SCOPE_DIRTY,
+            new RuntimeException('synthetic-private-detail', 0, new RuntimeException('synthetic-inner-detail')),
+        ));
+        $handler = new RunCriticalWorkerHandler(
+            $receiver,
+            new BackgroundCommandRegistry([
+                new BackgroundCommandRegistration(
+                    'telegram.update.received',
+                    '1.0',
+                    $this->createMock(IBackgroundCommandHandler::class),
+                ),
+            ], TestOutboxRoutes::registry()),
+            $this->createMock(IWorkerRuntime::class),
+            $guard,
+            new CriticalWorkerSettings(4, 10, 1, 256, 192, 10),
+            new NullLogger(),
+        );
+        $controller = $this->getMockBuilder(CriticalWorkerController::class)
+            ->setConstructorArgs(['platform-worker', Yii::$app, $handler, 1000, 3600])
+            ->onlyMethods(['stdout', 'stderr'])->getMock();
+        $controller->expects(self::once())->method('stderr')->with("execution_scope_dirty\n");
+        $controller->expects(self::never())->method('stdout');
+
         self::assertSame(1, $controller->actionCritical());
     }
 

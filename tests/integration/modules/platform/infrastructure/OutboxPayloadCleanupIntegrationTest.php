@@ -179,7 +179,7 @@ final class OutboxPayloadCleanupIntegrationTest extends Unit
             self::fail('Expected persistence failure.');
         } catch (OutboxMaintenanceException $exception) {
             self::assertSame(OutboxMaintenanceError::PERSISTENCE_FAILURE, $exception->error);
-            self::assertNull($exception->getPrevious());
+            self::assertNotNull($exception->getPrevious());
         } finally {
             $this->db->createCommand('SET search_path = public')->execute();
         }
