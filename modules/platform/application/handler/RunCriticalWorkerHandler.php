@@ -12,6 +12,7 @@ use modules\platform\application\enum\BackgroundCommandOutcome;
 use modules\platform\application\enum\BrokerTransportErrorCode;
 use modules\platform\application\enum\CriticalWorkerError;
 use modules\platform\application\enum\CriticalWorkerStopReason;
+use modules\platform\application\enum\SafeCauseCode;
 use modules\platform\application\exception\BackgroundCommandRejectedException;
 use modules\platform\application\exception\BrokerTransportException;
 use modules\platform\application\exception\CriticalWorkerException;
@@ -53,7 +54,15 @@ final class RunCriticalWorkerHandler
                 try {
                     $this->bounded($this->settings->brokerOperationTimeoutSeconds, function () use (&$delivery): void {
                         $this->guard->assertClean();
-                        $delivery = $this->receiver->receive((float) $this->settings->receiveTimeoutSeconds);
+                        try {
+                            $delivery = $this->receiver->receive((float) $this->settings->receiveTimeoutSeconds);
+                        } catch (Throwable $exception) {
+                            throw new CriticalWorkerException(
+                                CriticalWorkerError::TRANSPORT_FAILURE,
+                                $exception instanceof BrokerTransportException ? null : $exception,
+                                SafeCauseCode::TRANSPORT,
+                            );
+                        }
                     });
                     if ($delivery === null) {
                         continue;
@@ -109,6 +118,7 @@ final class RunCriticalWorkerHandler
                                     throw new CriticalWorkerException(
                                         CriticalWorkerError::HANDLER_FAILURE,
                                         $exception instanceof BrokerTransportException ? null : $exception,
+                                        SafeCauseCode::HANDLER,
                                     );
                                 }
                             },
@@ -146,6 +156,7 @@ final class RunCriticalWorkerHandler
             $failure = new CriticalWorkerException(
                 CriticalWorkerError::TRANSPORT_FAILURE,
                 $exception instanceof BrokerTransportException ? null : $exception,
+                $exception instanceof BrokerTransportException ? SafeCauseCode::TRANSPORT : SafeCauseCode::UNKNOWN,
             );
         } finally {
             $failure = $this->cleanup($failure);
@@ -209,23 +220,24 @@ final class RunCriticalWorkerHandler
                     $failure ??= new CriticalWorkerException(
                         CriticalWorkerError::CLEANUP_FAILURE,
                         $exception instanceof BrokerTransportException ? null : $exception,
+                        $resource === $this->receiver ? SafeCauseCode::TRANSPORT : SafeCauseCode::WORKER_RUNTIME,
                     );
                 }
             }
         } catch (Throwable $exception) {
             $cleanupFailed = true;
-            $failure ??= new CriticalWorkerException(CriticalWorkerError::CLEANUP_FAILURE, $exception);
+            $failure ??= new CriticalWorkerException(CriticalWorkerError::CLEANUP_FAILURE, $exception, SafeCauseCode::WORKER_RUNTIME);
         } finally {
             try {
                 $this->runtime->close();
             } catch (Throwable $exception) {
                 $cleanupFailed = true;
-                $failure ??= new CriticalWorkerException(CriticalWorkerError::CLEANUP_FAILURE, $exception);
+                $failure ??= new CriticalWorkerException(CriticalWorkerError::CLEANUP_FAILURE, $exception, SafeCauseCode::WORKER_RUNTIME);
             }
         }
 
         if ($failure !== null) {
-            $context = ['reason' => $failure->error->value];
+            $context = ['reason' => $failure->error->value, 'cause_code' => $failure->causeCode->value];
             if ($cleanupFailed) {
                 $context['cleanup_failed'] = true;
             }

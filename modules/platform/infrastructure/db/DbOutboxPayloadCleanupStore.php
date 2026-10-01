@@ -6,6 +6,7 @@ namespace modules\platform\infrastructure\db;
 
 use modules\platform\application\dto\OutboxPayloadCleanupReceipt;
 use modules\platform\application\enum\OutboxMaintenanceError;
+use modules\platform\application\enum\SafeCauseCode;
 use modules\platform\application\exception\OutboxMaintenanceException;
 use modules\platform\application\port\IOutboxPayloadCleanupStore;
 use Throwable;
@@ -79,7 +80,7 @@ SQL,
             throw $exception;
         } catch (Throwable $exception) {
             $this->rollBack($transaction);
-            throw new OutboxMaintenanceException(OutboxMaintenanceError::PERSISTENCE_FAILURE, $exception);
+            throw new OutboxMaintenanceException(OutboxMaintenanceError::PERSISTENCE_FAILURE, $exception, SafeCauseCode::PERSISTENCE);
         }
     }
 
@@ -91,7 +92,6 @@ SQL,
         }
     }
 
-    /** @throws OutboxMaintenanceException */
     private function rollBack(?Transaction $transaction): void
     {
         if ($transaction === null) {
@@ -104,7 +104,7 @@ SQL,
                 $this->db->pdo->rollBack();
             }
         } catch (Throwable) {
-            throw new OutboxMaintenanceException(OutboxMaintenanceError::PERSISTENCE_FAILURE);
+            // A rollback failure must not replace the original persistence failure.
         }
     }
 }

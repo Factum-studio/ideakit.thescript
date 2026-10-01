@@ -34,13 +34,13 @@ final class YiiOutboxMaintenanceLoggerTest extends Unit
         self::assertSame(['event' => 'platform.outbox_maintenance.payload_cleared', 'cleared' => 3], $target->last[0]);
 
         $logger->warning('platform.outbox_maintenance.failed', [
-            'operation' => 'clear_payload', 'reason' => 'persistence_failure',
+            'operation' => 'clear_payload', 'reason' => 'persistence_failure', 'cause_code' => 'PERSISTENCE',
             'exception' => new RuntimeException('synthetic-sensitive-input'),
             'previous' => new RuntimeException('synthetic-inner-detail'),
         ]);
         self::assertSame([
             'event' => 'platform.outbox_maintenance.failed',
-            'operation' => 'clear_payload', 'reason' => 'persistence_failure',
+            'operation' => 'clear_payload', 'reason' => 'persistence_failure', 'cause_code' => 'PERSISTENCE',
         ], $target->last[0]);
         self::assertSame(Logger::LEVEL_WARNING, $target->last[1]);
 
@@ -62,6 +62,7 @@ final class YiiOutboxMaintenanceLoggerTest extends Unit
         $logger = new YiiOutboxMaintenanceLogger(new Dispatcher(['logger' => new Logger(), 'targets' => [$target]]));
         $logger->warning('platform.outbox_maintenance.failed', [
             'operation' => 'synthetic-sensitive-input', 'reason' => 'synthetic-sensitive-input',
+            'cause_code' => new RuntimeException('synthetic-sensitive-input'),
         ]);
         self::assertSame(['event' => 'platform.outbox_maintenance.failed'], $target->last[0]);
 

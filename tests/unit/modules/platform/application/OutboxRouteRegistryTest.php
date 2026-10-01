@@ -43,7 +43,7 @@ final class OutboxRouteRegistryTest extends Unit
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('outbox_route_invalid');
 
-        new OutboxRouteRegistry([]);
+        new OutboxRouteRegistry([], ['critical']);
     }
 
     /** @dataProvider conflictingRegistrations */
@@ -52,7 +52,63 @@ final class OutboxRouteRegistryTest extends Unit
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('outbox_route_invalid');
 
-        new OutboxRouteRegistry([TestOutboxRoutes::telegram(), $other]);
+        new OutboxRouteRegistry([TestOutboxRoutes::telegram(), $other], ['critical']);
+    }
+
+    public function testAlternativeRoutingKeyRequiresExplicitBrokerSupport(): void
+    {
+        $alternative = new OutboxRoute(
+            'Synthetic',
+            'synthetic.command',
+            '1.0',
+            'SYNTHETIC',
+            'RABBITMQ',
+            'other',
+            1024,
+            TestOutboxRoutes::telegram()->payloadCodec,
+        );
+
+        self::assertSame('other', $alternative->routingKey);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('outbox_route_invalid');
+
+        new OutboxRouteRegistry([$alternative], ['critical']);
+    }
+
+    /** @dataProvider invalidRoutingKeys */
+    public function testRouteRejectsInvalidRoutingKey(string $routingKey): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('outbox_route_invalid');
+
+        new OutboxRoute('Synthetic', 'synthetic.command', '1.0', 'SYNTHETIC', 'RABBITMQ', $routingKey, 1024, TestOutboxRoutes::telegram()->payloadCodec);
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function invalidRoutingKeys(): iterable
+    {
+        yield 'blank' => [''];
+        yield 'invalid characters' => ['other/key'];
+        yield 'too long' => [str_repeat('a', 65)];
+    }
+
+    /** @dataProvider invalidSupportedRoutingKeys */
+    public function testRegistryRejectsInvalidSupportedRoutingKeys(array $routingKeys): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('outbox_route_invalid');
+
+        new OutboxRouteRegistry([TestOutboxRoutes::telegram()], $routingKeys);
+    }
+
+    /** @return iterable<string, array{array<mixed>}> */
+    public static function invalidSupportedRoutingKeys(): iterable
+    {
+        yield 'empty' => [[]];
+        yield 'duplicate' => [['critical', 'critical']];
+        yield 'invalid' => [['critical', 'other/key']];
+        yield 'not a list' => [[1 => 'critical']];
     }
 
     /** @return iterable<string, array{OutboxRoute}> */

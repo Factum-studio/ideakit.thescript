@@ -13,6 +13,7 @@ use modules\platform\application\dto\CriticalWorkerSettings;
 use modules\platform\application\enum\BackgroundCommandOutcome;
 use modules\platform\application\enum\BrokerTransportErrorCode;
 use modules\platform\application\enum\CriticalWorkerError;
+use modules\platform\application\enum\SafeCauseCode;
 use modules\platform\application\enum\CriticalWorkerStopReason;
 use modules\platform\application\exception\BackgroundCommandRejectedException;
 use modules\platform\application\exception\BrokerTransportException;
@@ -184,6 +185,7 @@ final class RunCriticalWorkerHandlerTest extends Unit
         $this->assertFailure(
             CriticalWorkerError::HANDLER_FAILURE,
             expectedPrevious: $failure instanceof BrokerTransportException ? null : $failure,
+            expectedCauseCode: SafeCauseCode::HANDLER,
         );
         $this->assertCleanup();
     }
@@ -194,10 +196,14 @@ final class RunCriticalWorkerHandlerTest extends Unit
         $this->receiver->expects(self::once())->method('receive')->willThrowException($failure);
         $this->logger->expects(self::once())->method('error')->with(
             'critical_worker.stopped',
-            ['reason' => CriticalWorkerError::TRANSPORT_FAILURE->value],
+            ['reason' => CriticalWorkerError::TRANSPORT_FAILURE->value, 'cause_code' => 'TRANSPORT'],
         );
 
-        $this->assertFailure(CriticalWorkerError::TRANSPORT_FAILURE, expectedPrevious: $failure);
+        $this->assertFailure(
+            CriticalWorkerError::TRANSPORT_FAILURE,
+            expectedPrevious: $failure,
+            expectedCauseCode: SafeCauseCode::TRANSPORT,
+        );
         $this->assertCleanup();
     }
 
@@ -226,7 +232,7 @@ final class RunCriticalWorkerHandlerTest extends Unit
             ->willThrowException(new BrokerTransportException(BrokerTransportErrorCode::CONNECTION_FAILURE));
         $delivery->expects(self::never())->method($reject ? 'acknowledge' : 'reject');
 
-        $this->assertFailure(CriticalWorkerError::TRANSPORT_FAILURE);
+        $this->assertFailure(CriticalWorkerError::TRANSPORT_FAILURE, expectedCauseCode: SafeCauseCode::TRANSPORT);
         $this->assertCleanup();
     }
 
@@ -398,12 +404,20 @@ final class RunCriticalWorkerHandlerTest extends Unit
         $this->runtime->expects(self::once())->method('close');
         $expected = $primaryFailure ? CriticalWorkerError::HANDLER_FAILURE : CriticalWorkerError::CLEANUP_FAILURE;
         $this->logger->expects(self::once())->method('error')
-            ->with('critical_worker.stopped', ['reason' => $expected->value, 'cleanup_failed' => true])
+            ->with('critical_worker.stopped', [
+                'reason' => $expected->value,
+                'cause_code' => $primaryFailure ? 'HANDLER' : 'WORKER_RUNTIME',
+                'cleanup_failed' => true,
+            ])
             ->willReturnCallback(function (): void {
                 self::assertSame(10, $this->phase);
             });
 
-        $this->assertFailure($expected, expectedPrevious: $primaryFailure ? $handlerFailure : $cleanupFailure);
+        $this->assertFailure(
+            $expected,
+            expectedPrevious: $primaryFailure ? $handlerFailure : $cleanupFailure,
+            expectedCauseCode: $primaryFailure ? SafeCauseCode::HANDLER : SafeCauseCode::WORKER_RUNTIME,
+        );
     }
 
     /** @return iterable<string, array{bool}> */
@@ -423,10 +437,10 @@ final class RunCriticalWorkerHandlerTest extends Unit
             ->willThrowException(new RuntimeException('synthetic-close-detail'));
         $this->logger->expects(self::once())->method('error')->with(
             'critical_worker.stopped',
-            ['reason' => CriticalWorkerError::HANDLER_FAILURE->value, 'cleanup_failed' => true],
+            ['reason' => CriticalWorkerError::HANDLER_FAILURE->value, 'cause_code' => 'HANDLER', 'cleanup_failed' => true],
         );
 
-        $this->assertFailure(CriticalWorkerError::HANDLER_FAILURE, expectedPrevious: $primary);
+        $this->assertFailure(CriticalWorkerError::HANDLER_FAILURE, expectedPrevious: $primary, expectedCauseCode: SafeCauseCode::HANDLER);
     }
 
     /** @dataProvider invalidLimits */
@@ -490,6 +504,7 @@ final class RunCriticalWorkerHandlerTest extends Unit
         CriticalWorkerError $expected,
         ?BackgroundCommandRegistry $registry = null,
         ?Throwable $expectedPrevious = null,
+        ?SafeCauseCode $expectedCauseCode = null,
     ): void {
         try {
             $this->worker($registry)->handle(new RunCriticalWorkerCommand(1, 30));
@@ -498,6 +513,9 @@ final class RunCriticalWorkerHandlerTest extends Unit
             self::assertSame($expected, $exception->error);
             self::assertSame($expected->value, $exception->getMessage());
             self::assertSame($expectedPrevious, $exception->getPrevious());
+            if ($expectedCauseCode !== null) {
+                self::assertSame($expectedCauseCode, $exception->causeCode);
+            }
         }
     }
 

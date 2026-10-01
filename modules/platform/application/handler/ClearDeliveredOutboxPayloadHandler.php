@@ -7,6 +7,7 @@ namespace modules\platform\application\handler;
 use modules\platform\application\command\ClearDeliveredOutboxPayloadCommand;
 use modules\platform\application\dto\OutboxPayloadCleanupReceipt;
 use modules\platform\application\enum\OutboxMaintenanceError;
+use modules\platform\application\enum\SafeCauseCode;
 use modules\platform\application\exception\OutboxMaintenanceException;
 use modules\platform\application\port\IOutboxPayloadCleanupStore;
 use Throwable;
@@ -24,8 +25,8 @@ final class ClearDeliveredOutboxPayloadHandler
             return $this->store->clearDue($command->limit);
         } catch (OutboxMaintenanceException $exception) {
             throw $exception;
-        } catch (Throwable) {
-            throw new OutboxMaintenanceException(OutboxMaintenanceError::PERSISTENCE_FAILURE);
+        } catch (Throwable $exception) {
+            throw new OutboxMaintenanceException(OutboxMaintenanceError::PERSISTENCE_FAILURE, $exception, SafeCauseCode::PERSISTENCE);
         }
     }
 }

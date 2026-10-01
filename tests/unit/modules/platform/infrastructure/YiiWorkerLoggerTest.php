@@ -22,14 +22,15 @@ final class YiiWorkerLoggerTest extends Unit
         $global = Yii::getLogger();
         $logger = new YiiWorkerLogger(new Dispatcher(['logger' => new Logger(), 'targets' => [$target]]));
         $logger->error('critical_worker.stopped', [
-            'reason' => 'handler_failure', 'cleanup_failed' => true,
+            'reason' => 'handler_failure', 'cause_code' => 'HANDLER', 'cleanup_failed' => true,
             'outbox_id' => '01890f4d-3c2a-7f48-8c0b-123456789ac4',
             'correlation_id' => 'not-a-uuid', 'exception' => new RuntimeException('synthetic-sensitive-input'),
             'payload' => 'synthetic-sensitive-input', 'sql' => 'synthetic-sensitive-input',
             'previous' => new RuntimeException('synthetic-inner-detail'),
         ]);
         self::assertSame([
-            'event' => 'critical_worker.stopped', 'reason' => 'handler_failure', 'cleanup_failed' => true,
+            'event' => 'critical_worker.stopped', 'reason' => 'handler_failure',
+            'cause_code' => 'HANDLER', 'cleanup_failed' => true,
             'outbox_id' => '01890f4d-3c2a-7f48-8c0b-123456789ac4',
         ], $target->last[0]);
         self::assertSame(Logger::LEVEL_ERROR, $target->last[1]);
@@ -37,6 +38,8 @@ final class YiiWorkerLoggerTest extends Unit
         self::assertSame($global, Yii::getLogger());
         $logger->warning('critical_worker.rejected', ['reason' => 'synthetic-sensitive-input']);
         self::assertSame(['event' => 'critical_worker.rejected'], $target->last[0]);
+        $logger->error('critical_worker.stopped', ['cause_code' => 'synthetic-sensitive-input']);
+        self::assertSame(['event' => 'critical_worker.stopped'], $target->last[0]);
         $before = $target->exports;
         $logger->info('synthetic-sensitive-input');
         $logger->info(new class () implements Stringable {

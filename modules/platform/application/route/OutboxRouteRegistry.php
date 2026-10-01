@@ -14,15 +14,30 @@ final class OutboxRouteRegistry
     /** @var array<string, OutboxRoute> */
     private readonly array $routes;
 
-    /** @param array<mixed> $routes */
-    public function __construct(array $routes)
+    /**
+     * @param array<mixed> $routes
+     * @param array<mixed> $supportedRoutingKeys
+     */
+    public function __construct(array $routes, array $supportedRoutingKeys)
     {
-        if ($routes === [] || !array_is_list($routes)) {
+        if ($routes === [] || !array_is_list($routes)
+            || $supportedRoutingKeys === [] || !array_is_list($supportedRoutingKeys)
+        ) {
             throw new InvalidArgumentException('outbox_route_invalid');
+        }
+        $supported = [];
+        foreach ($supportedRoutingKeys as $routingKey) {
+            if (!is_string($routingKey) || $routingKey === '' || strlen($routingKey) > 64
+                || preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]*$/D', $routingKey) !== 1
+                || isset($supported[$routingKey])
+            ) {
+                throw new InvalidArgumentException('outbox_route_invalid');
+            }
+            $supported[$routingKey] = true;
         }
         $registered = [];
         foreach ($routes as $route) {
-            if (!$route instanceof OutboxRoute) {
+            if (!$route instanceof OutboxRoute || !isset($supported[$route->routingKey])) {
                 throw new InvalidArgumentException('outbox_route_invalid');
             }
             $key = self::key($route->messageType, $route->schemaVersion);

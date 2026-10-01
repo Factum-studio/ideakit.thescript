@@ -6,6 +6,7 @@ namespace modules\platform\infrastructure\logging;
 
 use modules\platform\application\enum\CriticalWorkerError;
 use modules\platform\application\enum\CriticalWorkerStopReason;
+use modules\platform\application\enum\SafeCauseCode;
 use Psr\Log\AbstractLogger;
 use Psr\Log\InvalidArgumentException;
 use Psr\Log\LogLevel;
@@ -49,6 +50,14 @@ final class YiiWorkerLogger extends AbstractLogger
             || in_array($reason, ['invalid_envelope', 'handler_rejected'], true)
         )) {
             $safe['reason'] = $reason;
+        }
+        $causeCode = $context['cause_code'] ?? null;
+        if ($severity === Logger::LEVEL_ERROR
+            && in_array($message, ['critical_worker.failed', 'critical_worker.stopped'], true)
+            && is_string($causeCode)
+            && SafeCauseCode::tryFrom($causeCode) !== null
+        ) {
+            $safe['cause_code'] = $causeCode;
         }
         if (is_bool($context['cleanup_failed'] ?? null)) {
             $safe['cleanup_failed'] = $context['cleanup_failed'];

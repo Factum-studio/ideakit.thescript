@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace modules\platform\infrastructure\db;
 
 use modules\platform\application\enum\CriticalWorkerError;
+use modules\platform\application\enum\SafeCauseCode;
 use modules\platform\application\exception\CriticalWorkerException;
 use modules\platform\application\port\IWorkerExecutionGuard;
 use Throwable;
@@ -21,18 +22,18 @@ final class DbWorkerExecutionGuard implements IWorkerExecutionGuard
     {
         try {
             $dirty = $this->db->getTransaction() !== null || $this->db->pdo?->inTransaction() === true;
-        } catch (Throwable) {
-            throw new CriticalWorkerException(CriticalWorkerError::EXECUTION_SCOPE_DIRTY);
+        } catch (Throwable $exception) {
+            throw new CriticalWorkerException(CriticalWorkerError::EXECUTION_SCOPE_DIRTY, $exception, SafeCauseCode::WORKER_RUNTIME);
         }
         if ($dirty) {
-            throw new CriticalWorkerException(CriticalWorkerError::EXECUTION_SCOPE_DIRTY);
+            throw new CriticalWorkerException(CriticalWorkerError::EXECUTION_SCOPE_DIRTY, causeCode: SafeCauseCode::WORKER_RUNTIME);
         }
     }
 
     /** @throws CriticalWorkerException */
     public function close(): void
     {
-        $failed = false;
+        $failure = null;
         try {
             $transaction = $this->db->getTransaction();
             if ($transaction !== null) {
@@ -40,16 +41,16 @@ final class DbWorkerExecutionGuard implements IWorkerExecutionGuard
             } elseif ($this->db->pdo?->inTransaction()) {
                 $this->db->pdo->rollBack();
             }
-        } catch (Throwable) {
-            $failed = true;
+        } catch (Throwable $exception) {
+            $failure = $exception;
         }
         try {
             $this->db->close();
-        } catch (Throwable) {
-            $failed = true;
+        } catch (Throwable $exception) {
+            $failure ??= $exception;
         }
-        if ($failed) {
-            throw new CriticalWorkerException(CriticalWorkerError::CLEANUP_FAILURE);
+        if ($failure !== null) {
+            throw new CriticalWorkerException(CriticalWorkerError::CLEANUP_FAILURE, $failure, SafeCauseCode::WORKER_RUNTIME);
         }
     }
 }

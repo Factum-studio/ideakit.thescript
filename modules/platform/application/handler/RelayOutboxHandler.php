@@ -10,6 +10,7 @@ use modules\platform\application\dto\OutboxRelayDecision;
 use modules\platform\application\dto\OutboxRelayReceipt;
 use modules\platform\application\dto\OutboxRelaySettings;
 use modules\platform\application\enum\OutboxRelayError;
+use modules\platform\application\enum\SafeCauseCode;
 use modules\platform\application\exception\BrokerTransportException;
 use modules\platform\application\exception\OutboxRelayException;
 use modules\platform\application\policy\OutboxRetryPolicy;
@@ -31,15 +32,19 @@ final class RelayOutboxHandler
     public function handle(RelayOutboxCommand $command): OutboxRelayReceipt
     {
         $claimed = $delivered = $retryScheduled = $failed = $leaseLost = 0;
+        $causeCode = SafeCauseCode::PERSISTENCE;
 
         try {
             while ($claimed < $command->limit) {
+                $causeCode = SafeCauseCode::PERSISTENCE;
                 $claim = $this->store->claimNext($this->settings);
                 if ($claim === null) {
                     break;
                 }
                 $claimed++;
+                $causeCode = SafeCauseCode::UNKNOWN;
                 $decision = $this->decideClaim($claim);
+                $causeCode = SafeCauseCode::PERSISTENCE;
                 if ($decision === null || !$this->store->finish($claim, $decision)) {
                     $leaseLost++;
 
@@ -60,6 +65,7 @@ final class RelayOutboxHandler
             throw new OutboxRelayException(
                 OutboxRelayError::UNEXPECTED_FAILURE,
                 $exception instanceof BrokerTransportException ? null : $exception,
+                $exception instanceof BrokerTransportException ? SafeCauseCode::TRANSPORT : $causeCode,
             );
         }
     }
@@ -70,7 +76,14 @@ final class RelayOutboxHandler
         if ($claim->rejection !== null) {
             return OutboxRelayDecision::failed($claim->rejection);
         }
-        if (!$this->store->isLeaseActive($claim)) {
+        try {
+            $active = $this->store->isLeaseActive($claim);
+        } catch (OutboxRelayException $exception) {
+            throw $exception;
+        } catch (Throwable $exception) {
+            throw new OutboxRelayException(OutboxRelayError::UNEXPECTED_FAILURE, $exception, SafeCauseCode::PERSISTENCE);
+        }
+        if (!$active) {
             return null;
         }
         $envelope = $claim->envelope;
@@ -86,6 +99,8 @@ final class RelayOutboxHandler
                 $claim->attemptNumber,
                 $this->settings->maxAttempts,
             );
+        } catch (Throwable $exception) {
+            throw new OutboxRelayException(OutboxRelayError::UNEXPECTED_FAILURE, $exception, SafeCauseCode::TRANSPORT);
         }
 
         return $receipt->outboxId === $claim->outboxId

@@ -59,8 +59,10 @@ class OutboxMaintenanceController extends Controller
         } catch (OutboxMaintenanceException $exception) {
             $this->logger->warning('platform.outbox_maintenance.failed', [
                 'operation' => 'recover', 'reason' => $exception->error->value,
+                'cause_code' => $exception->causeCode->value,
             ]);
-            $this->stderr('Outbox recovery failed: ' . $exception->error->value . ".\n");
+            $this->stderr('Outbox recovery failed: ' . $exception->error->value
+                . ' cause_code=' . $exception->causeCode->value . ".\n");
 
             return ExitCode::UNSPECIFIED_ERROR;
         }
@@ -90,8 +92,10 @@ class OutboxMaintenanceController extends Controller
         } catch (OutboxMaintenanceException $exception) {
             $this->logger->warning('platform.outbox_maintenance.failed', [
                 'operation' => 'clear_payload', 'reason' => $exception->error->value,
+                'cause_code' => $exception->causeCode->value,
             ]);
-            $this->stderr('Outbox cleanup failed: ' . $exception->error->value . ".\n");
+            $this->stderr('Outbox cleanup failed: ' . $exception->error->value
+                . ' cause_code=' . $exception->causeCode->value . ".\n");
 
             return ExitCode::UNSPECIFIED_ERROR;
         }
@@ -109,8 +113,10 @@ class OutboxMaintenanceController extends Controller
         } catch (OutboxMaintenanceException $exception) {
             $this->logger->warning('platform.outbox_maintenance.failed', [
                 'operation' => 'status', 'reason' => $exception->error->value,
+                'cause_code' => $exception->causeCode->value,
             ]);
-            $this->stderr('Outbox status failed: ' . $exception->error->value . ".\n");
+            $this->stderr('Outbox status failed: ' . $exception->error->value
+                . ' cause_code=' . $exception->causeCode->value . ".\n");
 
             return ExitCode::UNSPECIFIED_ERROR;
         }

@@ -189,7 +189,7 @@ final class DbOutboxRelayStoreTest extends Unit
     }
 
     /** @dataProvider commitOperations */
-    public function testCommitFailureRollsBackDatabaseUpdate(string $operation): void
+    public function testCommitFailureRemainsPrimaryWhenRollbackAlsoFails(string $operation): void
     {
         $id = $this->insert();
         $claim = $operation === 'finish' ? $this->store()->claimNext(self::settings()) : null;
@@ -200,6 +200,12 @@ final class DbOutboxRelayStoreTest extends Unit
             public function commit(): bool
             {
                 throw new PDOException('Synthetic commit failure.');
+            }
+
+            public function rollBack(): bool
+            {
+                parent::rollBack();
+                throw new PDOException('Synthetic rollback failure.');
             }
         };
         self::assertSame('ideakit_test', $other->createCommand('SELECT current_database()')->queryScalar());
@@ -213,7 +219,9 @@ final class DbOutboxRelayStoreTest extends Unit
             self::fail('Expected commit failure.');
         } catch (OutboxRelayException $exception) {
             self::assertSame(OutboxRelayError::PERSISTENCE_FAILURE, $exception->error);
-            self::assertNull($exception->getPrevious());
+            self::assertInstanceOf(PDOException::class, $exception->getPrevious());
+            self::assertSame('Synthetic commit failure.', $exception->getPrevious()->getMessage());
+            self::assertSame('persistence_failure', $exception->getMessage());
         }
         self::assertFalse($other->pdo->inTransaction());
         self::assertSame($before, $this->row($id));
@@ -462,8 +470,8 @@ PHP;
                 self::fail('Expected persistence failure.');
             } catch (OutboxRelayException $exception) {
                 self::assertSame(OutboxRelayError::PERSISTENCE_FAILURE, $exception->error);
+                self::assertNotNull($exception->getPrevious());
                 self::assertSame('persistence_failure', $exception->getMessage());
-                self::assertNull($exception->getPrevious());
                 self::assertNull($this->db->getTransaction());
             }
         }

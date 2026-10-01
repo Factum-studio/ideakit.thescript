@@ -9,6 +9,7 @@ use DateTimeImmutable;
 use modules\platform\application\dto\OutboxRelayClaim;
 use modules\platform\application\dto\OutboxRelaySettings;
 use modules\platform\application\enum\OutboxRelayError;
+use modules\platform\application\enum\SafeCauseCode;
 use modules\platform\application\exception\OutboxRelayException;
 use modules\platform\application\handler\RelayOutboxHandler;
 use modules\platform\application\policy\OutboxRetryPolicy;
@@ -104,10 +105,11 @@ final class PlatformOutboxRelayContainerBindingsTest extends Unit
         $store->expects(self::once())->method('claimNext')->willThrowException(new OutboxRelayException(
             OutboxRelayError::PERSISTENCE_FAILURE,
             new \RuntimeException('synthetic-private-detail'),
+            SafeCauseCode::PERSISTENCE,
         ));
         $controller = $this->controller($store);
         $controller->expects(self::never())->method('stdout');
-        $controller->expects(self::once())->method('stderr')->with("Outbox relay failed: persistence_failure.\n");
+        $controller->expects(self::once())->method('stderr')->with("Outbox relay failed: persistence_failure cause_code=PERSISTENCE.\n");
         self::assertSame(1, $controller->actionRelay());
     }
 

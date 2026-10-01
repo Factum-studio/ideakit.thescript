@@ -167,7 +167,7 @@ $container->setSingleton(OutboxRouteRegistry::class, static function (): OutboxR
         'critical',
         1024,
         new TelegramUpdateReceivedPayloadCodec(),
-    )]);
+    )], ['critical']);
 });
 
 $container->setSingleton(IOutboxWriter::class, function () use ($container) {

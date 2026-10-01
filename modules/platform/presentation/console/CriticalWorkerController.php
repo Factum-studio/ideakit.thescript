@@ -48,11 +48,11 @@ class CriticalWorkerController extends Controller
         try {
             $receipt = $this->handler->handle(new RunCriticalWorkerCommand($limit, $maxRuntime));
         } catch (CriticalWorkerException $exception) {
-            $this->stderr($exception->error->value . "\n");
+            $this->stderr($exception->error->value . ' cause_code=' . $exception->causeCode->value . "\n");
 
             return ExitCode::UNSPECIFIED_ERROR;
         } catch (Throwable) {
-            $this->stderr("transport_failure\n");
+            $this->stderr("transport_failure cause_code=UNKNOWN\n");
 
             return ExitCode::UNSPECIFIED_ERROR;
         }

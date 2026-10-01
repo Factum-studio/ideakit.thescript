@@ -45,8 +45,9 @@ final class RecoverExpiredOutboxHandlerTest extends Unit
 
     public function testUnexpectedStoreErrorExposesOnlySafeCode(): void
     {
+        $cause = new RuntimeException('Synthetic database diagnostic.');
         $store = $this->createMock(IOutboxRecoveryStore::class);
-        $store->method('recoverExpired')->willThrowException(new RuntimeException('Synthetic database diagnostic.'));
+        $store->method('recoverExpired')->willThrowException($cause);
 
         try {
             (new RecoverExpiredOutboxHandler($store, new OutboxRelaySettings(5, 600, 15, 900)))
@@ -55,7 +56,22 @@ final class RecoverExpiredOutboxHandlerTest extends Unit
         } catch (OutboxMaintenanceException $exception) {
             self::assertSame(OutboxMaintenanceError::PERSISTENCE_FAILURE, $exception->error);
             self::assertSame('persistence_failure', $exception->getMessage());
-            self::assertNull($exception->getPrevious());
+            self::assertSame($cause, $exception->getPrevious());
+        }
+    }
+
+    public function testKnownStoreErrorIsNotWrapped(): void
+    {
+        $cause = new OutboxMaintenanceException(OutboxMaintenanceError::INVALID_STATE);
+        $store = $this->createMock(IOutboxRecoveryStore::class);
+        $store->method('recoverExpired')->willThrowException($cause);
+
+        try {
+            (new RecoverExpiredOutboxHandler($store, new OutboxRelaySettings(5, 600, 15, 900)))
+                ->handle(new RecoverExpiredOutboxCommand(1));
+            self::fail('Expected the original maintenance error.');
+        } catch (OutboxMaintenanceException $exception) {
+            self::assertSame($cause, $exception);
         }
     }
 }

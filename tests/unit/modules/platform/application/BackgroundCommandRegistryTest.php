@@ -14,6 +14,8 @@ use modules\platform\application\exception\CriticalWorkerException;
 use modules\telegram\application\message\TelegramUpdateReceivedPayload;
 use modules\platform\application\port\IBackgroundCommandHandler;
 use modules\platform\application\route\BackgroundCommandRegistry;
+use modules\platform\application\route\OutboxRoute;
+use modules\platform\application\route\OutboxRouteRegistry;
 use tests\fixtures\platform\TestOutboxRoutes;
 
 final class BackgroundCommandRegistryTest extends Unit
@@ -184,5 +186,37 @@ final class BackgroundCommandRegistryTest extends Unit
 
         self::assertSame('handler_rejected', $exception->getMessage());
         self::assertNull($exception->getPrevious());
+    }
+
+    public function testEveryCriticalRouteRequiresItsOwnHandler(): void
+    {
+        $routes = new OutboxRouteRegistry([
+            TestOutboxRoutes::telegram(),
+            new OutboxRoute('Synthetic', 'synthetic.command', '1.0', 'SYNTHETIC', 'RABBITMQ', 'critical', 1024, TestOutboxRoutes::telegram()->payloadCodec),
+        ], ['critical']);
+        $telegram = new BackgroundCommandRegistration('telegram.update.received', '1.0', $this->createMock(IBackgroundCommandHandler::class));
+        $synthetic = new BackgroundCommandRegistration('synthetic.command', '1.0', $this->createMock(IBackgroundCommandHandler::class));
+
+        try {
+            (new BackgroundCommandRegistry([$telegram], $routes))->assertCriticalRouteRegistered();
+            self::fail('An unhandled critical route was accepted.');
+        } catch (CriticalWorkerException $exception) {
+            self::assertSame(CriticalWorkerError::HANDLER_MISSING, $exception->error);
+        }
+
+        (new BackgroundCommandRegistry([$telegram, $synthetic], $routes))->assertCriticalRouteRegistered();
+    }
+
+    public function testCriticalQueueWithoutRoutesCannotStartConsumer(): void
+    {
+        $routes = new OutboxRouteRegistry([
+            new OutboxRoute('Synthetic', 'synthetic.command', '1.0', 'SYNTHETIC', 'RABBITMQ', 'other', 1024, TestOutboxRoutes::telegram()->payloadCodec),
+        ], ['critical', 'other']);
+        $registry = new BackgroundCommandRegistry([], $routes);
+
+        $this->expectException(CriticalWorkerException::class);
+        $this->expectExceptionMessage('handler_missing');
+
+        $registry->assertCriticalRouteRegistered();
     }
 }

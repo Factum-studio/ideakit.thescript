@@ -6,6 +6,7 @@ namespace modules\platform\infrastructure\db;
 
 use modules\platform\application\dto\OutboxStatusView;
 use modules\platform\application\enum\OutboxMaintenanceError;
+use modules\platform\application\enum\SafeCauseCode;
 use modules\platform\application\exception\OutboxMaintenanceException;
 use modules\platform\application\port\IOutboxStatusReader;
 use Throwable;
@@ -44,8 +45,8 @@ SQL,
             );
         } catch (OutboxMaintenanceException $exception) {
             throw $exception;
-        } catch (Throwable) {
-            throw new OutboxMaintenanceException(OutboxMaintenanceError::PERSISTENCE_FAILURE);
+        } catch (Throwable $exception) {
+            throw new OutboxMaintenanceException(OutboxMaintenanceError::PERSISTENCE_FAILURE, $exception, SafeCauseCode::PERSISTENCE);
         }
     }
 

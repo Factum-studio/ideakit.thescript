@@ -7,6 +7,7 @@ namespace modules\platform\infrastructure\process;
 use modules\platform\application\command\RunCriticalWorkerCommand;
 use modules\platform\application\dto\CriticalWorkerSettings;
 use modules\platform\application\enum\CriticalWorkerError;
+use modules\platform\application\enum\SafeCauseCode;
 use modules\platform\application\exception\CriticalWorkerException;
 use modules\platform\application\port\IWorkerRuntime;
 
@@ -27,11 +28,11 @@ final class PcntlWorkerRuntime implements IWorkerRuntime
     public function start(RunCriticalWorkerCommand $command, CriticalWorkerSettings $settings): void
     {
         if ($this->active || PHP_SAPI !== 'cli' || PHP_OS_FAMILY !== 'Linux') {
-            throw new CriticalWorkerException(CriticalWorkerError::CONFIGURATION_INVALID);
+            throw new CriticalWorkerException(CriticalWorkerError::CONFIGURATION_INVALID, causeCode: SafeCauseCode::WORKER_RUNTIME);
         }
         foreach (['pcntl_alarm', 'pcntl_signal', 'pcntl_signal_get_handler', 'pcntl_async_signals', 'pcntl_sigprocmask'] as $function) {
             if (!function_exists($function)) {
-                throw new CriticalWorkerException(CriticalWorkerError::CONFIGURATION_INVALID);
+                throw new CriticalWorkerException(CriticalWorkerError::CONFIGURATION_INVALID, causeCode: SafeCauseCode::WORKER_RUNTIME);
             }
         }
         $mask = [];
@@ -40,11 +41,11 @@ final class PcntlWorkerRuntime implements IWorkerRuntime
             || !pcntl_sigprocmask(SIG_BLOCK, [], $mask) || in_array(SIGALRM, $mask, true)
             || memory_get_usage(true) >= $settings->memoryLimitMib * 1024 * 1024
         ) {
-            throw new CriticalWorkerException(CriticalWorkerError::CONFIGURATION_INVALID);
+            throw new CriticalWorkerException(CriticalWorkerError::CONFIGURATION_INVALID, causeCode: SafeCauseCode::WORKER_RUNTIME);
         }
         $previous = ini_set('memory_limit', $settings->memoryLimitMib . 'M');
         if ($previous === false || ini_get('memory_limit') !== $settings->memoryLimitMib . 'M') {
-            throw new CriticalWorkerException(CriticalWorkerError::CONFIGURATION_INVALID);
+            throw new CriticalWorkerException(CriticalWorkerError::CONFIGURATION_INVALID, causeCode: SafeCauseCode::WORKER_RUNTIME);
         }
         $this->previousMemoryLimit = $previous;
         $this->previousAsync = pcntl_async_signals();
@@ -90,10 +91,10 @@ final class PcntlWorkerRuntime implements IWorkerRuntime
     public function armDeadline(int $seconds): void
     {
         if (!$this->active) {
-            throw new CriticalWorkerException(CriticalWorkerError::CONFIGURATION_INVALID);
+            throw new CriticalWorkerException(CriticalWorkerError::CONFIGURATION_INVALID, causeCode: SafeCauseCode::WORKER_RUNTIME);
         }
         if ($seconds < 1 || $seconds > $this->settings->shutdownTimeoutSeconds) {
-            throw new CriticalWorkerException(CriticalWorkerError::CONFIGURATION_INVALID);
+            throw new CriticalWorkerException(CriticalWorkerError::CONFIGURATION_INVALID, causeCode: SafeCauseCode::WORKER_RUNTIME);
         }
         $this->assertTimeRemaining();
         $this->phaseDeadline = $this->monotonicSeconds() + $seconds;
@@ -119,7 +120,7 @@ final class PcntlWorkerRuntime implements IWorkerRuntime
         }
         $mask = [];
         if (!pcntl_sigprocmask(SIG_BLOCK, array_keys($this->previousHandlers), $mask)) {
-            throw new CriticalWorkerException(CriticalWorkerError::CLEANUP_FAILURE);
+            throw new CriticalWorkerException(CriticalWorkerError::CLEANUP_FAILURE, causeCode: SafeCauseCode::WORKER_RUNTIME);
         }
         try {
             // A stop callback must not rearm the timer while its ownership is being released.
@@ -136,15 +137,15 @@ final class PcntlWorkerRuntime implements IWorkerRuntime
                 $limit = $this->previousMemoryLimit;
                 $this->previousMemoryLimit = null;
                 if ($limit !== '-1' && memory_get_usage(true) > self::bytes($limit)) {
-                    throw new CriticalWorkerException(CriticalWorkerError::CLEANUP_FAILURE);
+                    throw new CriticalWorkerException(CriticalWorkerError::CLEANUP_FAILURE, causeCode: SafeCauseCode::WORKER_RUNTIME);
                 }
                 if (ini_set('memory_limit', $limit) === false) {
-                    throw new CriticalWorkerException(CriticalWorkerError::CLEANUP_FAILURE);
+                    throw new CriticalWorkerException(CriticalWorkerError::CLEANUP_FAILURE, causeCode: SafeCauseCode::WORKER_RUNTIME);
                 }
             }
         } finally {
             if (!pcntl_sigprocmask(SIG_SETMASK, $mask)) {
-                throw new CriticalWorkerException(CriticalWorkerError::CLEANUP_FAILURE);
+                throw new CriticalWorkerException(CriticalWorkerError::CLEANUP_FAILURE, causeCode: SafeCauseCode::WORKER_RUNTIME);
             }
         }
     }
@@ -163,7 +164,7 @@ final class PcntlWorkerRuntime implements IWorkerRuntime
     private function assertTimeRemaining(): void
     {
         if ($this->deadline() <= $this->monotonicSeconds()) {
-            throw new CriticalWorkerException(CriticalWorkerError::TRANSPORT_FAILURE);
+            throw new CriticalWorkerException(CriticalWorkerError::TRANSPORT_FAILURE, causeCode: SafeCauseCode::WORKER_RUNTIME);
         }
     }
 

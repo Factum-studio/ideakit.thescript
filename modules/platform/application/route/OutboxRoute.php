@@ -29,7 +29,7 @@ final class OutboxRoute
                 throw new InvalidArgumentException('outbox_route_invalid');
             }
         }
-        if ($destination !== 'RABBITMQ' || $routingKey !== 'critical'
+        if ($destination !== 'RABBITMQ'
             || $maximumPayloadBytes < 1 || $maximumPayloadBytes > 1024
         ) {
             throw new InvalidArgumentException('outbox_route_invalid');

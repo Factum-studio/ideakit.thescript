@@ -5,11 +5,25 @@ declare(strict_types=1);
 namespace tests\integration\modules\platform\infrastructure;
 
 use Codeception\Test\Unit;
+use modules\platform\application\enum\SafeCauseCode;
+use modules\platform\application\exception\CriticalWorkerException;
+use modules\platform\infrastructure\process\PcntlWorkerRuntime;
 use Symfony\Component\Process\Exception\ProcessSignaledException;
 use Symfony\Component\Process\Process;
 
 final class CriticalWorkerRuntimeTest extends Unit
 {
+    public function testRuntimeConfigurationErrorHasSafeRuntimeCategory(): void
+    {
+        try {
+            (new PcntlWorkerRuntime())->armDeadline(1);
+            self::fail('Expected an unstarted runtime to reject a deadline.');
+        } catch (CriticalWorkerException $exception) {
+            self::assertSame('configuration_invalid', $exception->getMessage());
+            self::assertSame(SafeCauseCode::WORKER_RUNTIME, $exception->causeCode);
+        }
+    }
+
     /** @dataProvider hardDeadlineScenarios */
     public function testHardDeadlineInterruptsRealProcess(string $scenario): void
     {

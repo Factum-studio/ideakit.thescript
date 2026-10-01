@@ -12,6 +12,7 @@ use modules\platform\application\dto\OutboxRecoveryReceipt;
 use modules\platform\application\dto\OutboxRelaySettings;
 use modules\platform\application\dto\OutboxStatusView;
 use modules\platform\application\enum\OutboxMaintenanceError;
+use modules\platform\application\enum\SafeCauseCode;
 use modules\platform\application\exception\OutboxMaintenanceException;
 use modules\platform\application\handler\RecoverExpiredOutboxHandler;
 use modules\platform\application\handler\ClearDeliveredOutboxPayloadHandler;
@@ -116,10 +117,14 @@ final class PlatformOutboxMaintenanceContainerBindingsTest extends Unit
     public function testConsoleOperationFailureIsSafe(): void
     {
         $store = $this->createMock(IOutboxRecoveryStore::class);
-        $store->method('recoverExpired')->willThrowException(new OutboxMaintenanceException(OutboxMaintenanceError::PERSISTENCE_FAILURE));
+        $store->method('recoverExpired')->willThrowException(new OutboxMaintenanceException(
+            OutboxMaintenanceError::PERSISTENCE_FAILURE,
+            new \RuntimeException('synthetic-private-detail'),
+            SafeCauseCode::PERSISTENCE,
+        ));
         $controller = $this->controller($store);
         $controller->expects(self::never())->method('stdout');
-        $controller->expects(self::once())->method('stderr')->with("Outbox recovery failed: persistence_failure.\n");
+        $controller->expects(self::once())->method('stderr')->with("Outbox recovery failed: persistence_failure cause_code=PERSISTENCE.\n");
 
         self::assertSame(1, $controller->actionRecover());
     }
@@ -170,15 +175,16 @@ final class PlatformOutboxMaintenanceContainerBindingsTest extends Unit
         $cleanup->method('clearDue')->willThrowException(new OutboxMaintenanceException(
             OutboxMaintenanceError::PERSISTENCE_FAILURE,
             new \RuntimeException('synthetic-private-detail', 0, new \RuntimeException('synthetic-inner-detail')),
+            SafeCauseCode::PERSISTENCE,
         ));
         $logger = $this->createMock(LoggerInterface::class);
         $logger->expects(self::once())->method('warning')->with(
             'platform.outbox_maintenance.failed',
-            ['operation' => 'clear_payload', 'reason' => 'persistence_failure'],
+            ['operation' => 'clear_payload', 'reason' => 'persistence_failure', 'cause_code' => 'PERSISTENCE'],
         );
         $controller = $this->controller($recovery, $cleanup, null, $logger);
         $controller->expects(self::never())->method('stdout');
-        $controller->expects(self::once())->method('stderr')->with("Outbox cleanup failed: persistence_failure.\n");
+        $controller->expects(self::once())->method('stderr')->with("Outbox cleanup failed: persistence_failure cause_code=PERSISTENCE.\n");
 
         self::assertSame(1, $controller->actionClearPayload());
     }
@@ -203,7 +209,7 @@ final class PlatformOutboxMaintenanceContainerBindingsTest extends Unit
         $reader->method('getStatus')->willThrowException(new OutboxMaintenanceException(OutboxMaintenanceError::PERSISTENCE_FAILURE));
         $controller = $this->controller($recovery, null, $reader);
         $controller->expects(self::never())->method('stdout');
-        $controller->expects(self::once())->method('stderr')->with("Outbox status failed: persistence_failure.\n");
+        $controller->expects(self::once())->method('stderr')->with("Outbox status failed: persistence_failure cause_code=UNKNOWN.\n");
 
         self::assertSame(1, $controller->actionStatus());
     }

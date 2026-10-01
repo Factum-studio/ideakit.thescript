@@ -47,7 +47,8 @@ class OutboxRelayController extends Controller
         try {
             $receipt = $this->handler->handle(new RelayOutboxCommand($limit));
         } catch (OutboxRelayException $exception) {
-            $this->stderr('Outbox relay failed: ' . $exception->error->value . ".\n");
+            $this->stderr('Outbox relay failed: ' . $exception->error->value
+                . ' cause_code=' . $exception->causeCode->value . ".\n");
 
             return ExitCode::UNSPECIFIED_ERROR;
         }

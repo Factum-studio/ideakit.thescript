@@ -9,6 +9,7 @@ use modules\platform\application\dto\OutboxRelayClaim;
 use modules\platform\application\dto\OutboxRelayDecision;
 use modules\platform\application\dto\OutboxRelaySettings;
 use modules\platform\application\enum\OutboxRelayError;
+use modules\platform\application\enum\SafeCauseCode;
 use modules\platform\application\exception\OutboxRelayException;
 use modules\platform\application\port\IOutboxLeaseTokenGenerator;
 use modules\platform\application\port\IOutboxRelayStore;
@@ -86,9 +87,9 @@ SQL,
         } catch (OutboxRelayException $exception) {
             $this->rollBack($transaction);
             throw $exception;
-        } catch (Throwable) {
+        } catch (Throwable $exception) {
             $this->rollBack($transaction);
-            throw new OutboxRelayException(OutboxRelayError::PERSISTENCE_FAILURE);
+            throw new OutboxRelayException(OutboxRelayError::PERSISTENCE_FAILURE, $exception, SafeCauseCode::PERSISTENCE);
         }
     }
 
@@ -101,8 +102,8 @@ SQL,
             return $this->leaseMatches($claim);
         } catch (OutboxRelayException $exception) {
             throw $exception;
-        } catch (Throwable) {
-            throw new OutboxRelayException(OutboxRelayError::PERSISTENCE_FAILURE);
+        } catch (Throwable $exception) {
+            throw new OutboxRelayException(OutboxRelayError::PERSISTENCE_FAILURE, $exception, SafeCauseCode::PERSISTENCE);
         }
     }
 
@@ -149,9 +150,9 @@ SQL,
         } catch (OutboxRelayException $exception) {
             $this->rollBack($transaction);
             throw $exception;
-        } catch (Throwable) {
+        } catch (Throwable $exception) {
             $this->rollBack($transaction);
-            throw new OutboxRelayException(OutboxRelayError::PERSISTENCE_FAILURE);
+            throw new OutboxRelayException(OutboxRelayError::PERSISTENCE_FAILURE, $exception, SafeCauseCode::PERSISTENCE);
         }
     }
 
@@ -176,7 +177,6 @@ SQL,
         }
     }
 
-    /** @throws OutboxRelayException */
     private function rollBack(?Transaction $transaction): void
     {
         if ($transaction === null) {
@@ -190,7 +190,7 @@ SQL,
                 $this->db->pdo->rollBack();
             }
         } catch (Throwable) {
-            throw new OutboxRelayException(OutboxRelayError::PERSISTENCE_FAILURE);
+            // A rollback failure must not replace the original persistence failure.
         }
     }
 

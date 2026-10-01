@@ -10,6 +10,7 @@ use modules\platform\application\dto\OutboxRelayDecision;
 use modules\platform\application\dto\OutboxRelaySettings;
 use modules\platform\application\enum\OutboxMaintenanceError;
 use modules\platform\application\enum\OutboxRelayError;
+use modules\platform\application\enum\SafeCauseCode;
 use modules\platform\application\exception\OutboxMaintenanceException;
 use modules\platform\application\exception\OutboxRelayException;
 use modules\platform\application\policy\OutboxRetryPolicy;
@@ -132,7 +133,7 @@ SQL,
             throw $exception;
         } catch (Throwable $exception) {
             $this->rollBack($transaction);
-            throw new OutboxMaintenanceException(OutboxMaintenanceError::PERSISTENCE_FAILURE, $exception);
+            throw new OutboxMaintenanceException(OutboxMaintenanceError::PERSISTENCE_FAILURE, $exception, SafeCauseCode::PERSISTENCE);
         }
     }
 
@@ -144,7 +145,6 @@ SQL,
         }
     }
 
-    /** @throws OutboxMaintenanceException */
     private function rollBack(?Transaction $transaction): void
     {
         if ($transaction === null) {
@@ -157,7 +157,7 @@ SQL,
                 $this->db->pdo->rollBack();
             }
         } catch (Throwable) {
-            throw new OutboxMaintenanceException(OutboxMaintenanceError::PERSISTENCE_FAILURE);
+            // A rollback failure must not replace the original persistence failure.
         }
     }
 

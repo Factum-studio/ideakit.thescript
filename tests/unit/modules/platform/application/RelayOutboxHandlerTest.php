@@ -15,6 +15,7 @@ use modules\platform\application\dto\OutboxRelayReceipt;
 use modules\platform\application\dto\OutboxRelaySettings;
 use modules\platform\application\enum\BrokerTransportErrorCode;
 use modules\platform\application\enum\OutboxRelayError;
+use modules\platform\application\enum\SafeCauseCode;
 use modules\platform\application\exception\BrokerTransportException;
 use modules\platform\application\exception\OutboxRelayException;
 use modules\platform\application\handler\RelayOutboxHandler;
@@ -322,6 +323,14 @@ final class RelayOutboxHandlerTest extends Unit
                 $failure instanceof OutboxRelayException || $failure instanceof BrokerTransportException ? null : $failure,
                 $exception->getPrevious(),
             );
+            if ($failure instanceof RuntimeException && !$failure instanceof OutboxRelayException
+                && !$failure instanceof BrokerTransportException
+            ) {
+                self::assertSame(
+                    $stage === 'publish' ? SafeCauseCode::TRANSPORT : SafeCauseCode::PERSISTENCE,
+                    $exception->causeCode,
+                );
+            }
         }
     }
 

@@ -42,11 +42,14 @@ final class BackgroundCommandRegistry
     /** @throws CriticalWorkerException */
     public function assertCriticalRouteRegistered(): void
     {
-        foreach ($this->routes->forRoutingKey('critical') as $route) {
-            if (isset($this->handlers[$route->messageType . "\0" . $route->schemaVersion])) {
-                return;
+        $routes = $this->routes->forRoutingKey('critical');
+        if ($routes === []) {
+            throw new CriticalWorkerException(CriticalWorkerError::HANDLER_MISSING);
+        }
+        foreach ($routes as $route) {
+            if (!isset($this->handlers[$route->messageType . "\0" . $route->schemaVersion])) {
+                throw new CriticalWorkerException(CriticalWorkerError::HANDLER_MISSING);
             }
         }
-        throw new CriticalWorkerException(CriticalWorkerError::HANDLER_MISSING);
     }
 }

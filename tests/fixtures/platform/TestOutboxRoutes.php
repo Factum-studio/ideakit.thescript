@@ -12,7 +12,7 @@ final class TestOutboxRoutes
 {
     public static function registry(): OutboxRouteRegistry
     {
-        return new OutboxRouteRegistry([self::telegram()]);
+        return new OutboxRouteRegistry([self::telegram()], ['critical']);
     }
 
     public static function telegram(): OutboxRoute

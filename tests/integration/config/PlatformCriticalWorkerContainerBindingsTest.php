@@ -8,6 +8,7 @@ use Codeception\Test\Unit;
 use modules\platform\application\dto\BackgroundCommandRegistration;
 use modules\platform\application\dto\CriticalWorkerSettings;
 use modules\platform\application\enum\CriticalWorkerError;
+use modules\platform\application\enum\SafeCauseCode;
 use modules\platform\application\exception\CriticalWorkerException;
 use modules\platform\application\handler\RunCriticalWorkerHandler;
 use modules\platform\application\port\IBackgroundCommandHandler;
@@ -76,7 +77,7 @@ final class PlatformCriticalWorkerContainerBindingsTest extends Unit
         $runtime = $this->createMock(IWorkerRuntime::class);
         $runtime->expects(self::never())->method('start');
         $controller = $this->controller($runtime);
-        $controller->expects(self::once())->method('stderr')->with(CriticalWorkerError::HANDLER_MISSING->value . "\n");
+        $controller->expects(self::once())->method('stderr')->with(CriticalWorkerError::HANDLER_MISSING->value . " cause_code=UNKNOWN\n");
         $controller->expects(self::never())->method('stdout');
         self::assertSame(1, $controller->actionCritical());
     }
@@ -89,6 +90,7 @@ final class PlatformCriticalWorkerContainerBindingsTest extends Unit
         $guard->expects(self::once())->method('assertClean')->willThrowException(new CriticalWorkerException(
             CriticalWorkerError::EXECUTION_SCOPE_DIRTY,
             new RuntimeException('synthetic-private-detail', 0, new RuntimeException('synthetic-inner-detail')),
+            SafeCauseCode::WORKER_RUNTIME,
         ));
         $handler = new RunCriticalWorkerHandler(
             $receiver,
@@ -107,7 +109,7 @@ final class PlatformCriticalWorkerContainerBindingsTest extends Unit
         $controller = $this->getMockBuilder(CriticalWorkerController::class)
             ->setConstructorArgs(['platform-worker', Yii::$app, $handler, 1000, 3600])
             ->onlyMethods(['stdout', 'stderr'])->getMock();
-        $controller->expects(self::once())->method('stderr')->with("execution_scope_dirty\n");
+        $controller->expects(self::once())->method('stderr')->with("execution_scope_dirty cause_code=WORKER_RUNTIME\n");
         $controller->expects(self::never())->method('stdout');
 
         self::assertSame(1, $controller->actionCritical());

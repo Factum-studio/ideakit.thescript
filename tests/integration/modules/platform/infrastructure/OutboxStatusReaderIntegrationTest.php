@@ -95,7 +95,8 @@ final class OutboxStatusReaderIntegrationTest extends Unit
             self::fail('Expected persistence failure.');
         } catch (OutboxMaintenanceException $exception) {
             self::assertSame(OutboxMaintenanceError::PERSISTENCE_FAILURE, $exception->error);
-            self::assertNull($exception->getPrevious());
+            self::assertNotNull($exception->getPrevious());
+            self::assertSame('persistence_failure', $exception->getMessage());
         } finally {
             $this->db->createCommand('SET search_path = public')->execute();
         }
