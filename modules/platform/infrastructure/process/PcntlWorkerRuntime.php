@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace modules\platform\infrastructure\process;
 
+use Closure;
 use modules\platform\application\command\RunCriticalWorkerCommand;
 use modules\platform\application\dto\CriticalWorkerSettings;
 use modules\platform\application\enum\CriticalWorkerError;
@@ -23,6 +24,11 @@ final class PcntlWorkerRuntime implements IWorkerRuntime
     private float $processDeadline = 0.0;
     private ?float $phaseDeadline = null;
     private ?float $shutdownDeadline = null;
+
+    /** @param (Closure(): float)|null $monotonicClock */
+    public function __construct(private readonly ?Closure $monotonicClock = null)
+    {
+    }
 
     /** @throws CriticalWorkerException */
     public function start(RunCriticalWorkerCommand $command, CriticalWorkerSettings $settings): void
@@ -84,7 +90,7 @@ final class PcntlWorkerRuntime implements IWorkerRuntime
 
     public function monotonicSeconds(): float
     {
-        return hrtime(true) / 1e9;
+        return $this->monotonicClock !== null ? ($this->monotonicClock)() : hrtime(true) / 1e9;
     }
 
     /** @throws CriticalWorkerException */
@@ -164,7 +170,7 @@ final class PcntlWorkerRuntime implements IWorkerRuntime
     private function assertTimeRemaining(): void
     {
         if ($this->deadline() <= $this->monotonicSeconds()) {
-            throw new CriticalWorkerException(CriticalWorkerError::TRANSPORT_FAILURE, causeCode: SafeCauseCode::WORKER_RUNTIME);
+            throw new CriticalWorkerException(CriticalWorkerError::EXECUTION_DEADLINE_EXCEEDED, causeCode: SafeCauseCode::WORKER_RUNTIME);
         }
     }
 

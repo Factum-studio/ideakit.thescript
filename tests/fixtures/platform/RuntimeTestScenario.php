@@ -15,6 +15,25 @@ final class RuntimeTestScenario
     {
         $runtime = new PcntlWorkerRuntime();
         $settings = new CriticalWorkerSettings(1, 1, 1, 64, 32, 2);
+        if ($scenario === 'expired-catchable') {
+            $now = 10.0;
+            $runtime = new PcntlWorkerRuntime(static function () use (&$now): float {
+                return $now;
+            });
+            try {
+                $runtime->start(new RunCriticalWorkerCommand(1, 2), $settings);
+                $now = 13.0;
+                $runtime->armDeadline(1);
+            } catch (CriticalWorkerException $exception) {
+                echo $exception->error->value . ' cause_code=' . $exception->causeCode->value;
+
+                return 0;
+            } finally {
+                $runtime->close();
+            }
+
+            return 3;
+        }
         if ($scenario === 'unstarted') {
             try {
                 $runtime->armDeadline(1);

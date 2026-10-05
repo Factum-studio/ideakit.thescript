@@ -7,7 +7,6 @@ namespace modules\platform\presentation\console;
 use modules\platform\application\command\RunCriticalWorkerCommand;
 use modules\platform\application\exception\CriticalWorkerException;
 use modules\platform\application\handler\RunCriticalWorkerHandler;
-use Throwable;
 use yii\base\Module;
 use yii\console\Controller;
 use yii\console\ExitCode;
@@ -49,10 +48,6 @@ class CriticalWorkerController extends Controller
             $receipt = $this->handler->handle(new RunCriticalWorkerCommand($limit, $maxRuntime));
         } catch (CriticalWorkerException $exception) {
             $this->stderr($exception->error->value . ' cause_code=' . $exception->causeCode->value . "\n");
-
-            return ExitCode::UNSPECIFIED_ERROR;
-        } catch (Throwable) {
-            $this->stderr("transport_failure cause_code=UNKNOWN\n");
 
             return ExitCode::UNSPECIFIED_ERROR;
         }

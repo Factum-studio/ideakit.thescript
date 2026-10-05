@@ -84,7 +84,6 @@ use modules\users\infrastructure\mapper\TelegramIdentityProfileMapper;
 use modules\users\infrastructure\repository\DbTelegramIdentityProfileRepository;
 use yii\db\Connection;
 use yii\di\Container;
-use Psr\Log\LoggerInterface;
 
 $container = Yii::$container;
 
@@ -330,10 +329,6 @@ $container->set(IWorkerExecutionGuard::class, static function (): IWorkerExecuti
     return new DbWorkerExecutionGuard($db);
 });
 
-$container->set(LoggerInterface::class, static function (): LoggerInterface {
-    return new YiiWorkerLogger(Yii::$app->getLog());
-});
-
 $container->set(RunCriticalWorkerHandler::class, static function () use ($container): RunCriticalWorkerHandler {
     $settings = $container->get(CriticalWorkerConfig::class)->settings;
 
@@ -348,7 +343,7 @@ $container->set(RunCriticalWorkerHandler::class, static function () use ($contai
         $container->get(IWorkerRuntime::class),
         $container->get(IWorkerExecutionGuard::class),
         $settings,
-        $container->get(LoggerInterface::class),
+        new YiiWorkerLogger(Yii::$app->getLog()),
     );
 });
 

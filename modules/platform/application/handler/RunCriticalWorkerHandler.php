@@ -54,15 +54,7 @@ final class RunCriticalWorkerHandler
                 try {
                     $this->bounded($this->settings->brokerOperationTimeoutSeconds, function () use (&$delivery): void {
                         $this->guard->assertClean();
-                        try {
-                            $delivery = $this->receiver->receive((float) $this->settings->receiveTimeoutSeconds);
-                        } catch (Throwable $exception) {
-                            throw new CriticalWorkerException(
-                                CriticalWorkerError::TRANSPORT_FAILURE,
-                                $exception instanceof BrokerTransportException ? null : $exception,
-                                SafeCauseCode::TRANSPORT,
-                            );
-                        }
+                        $delivery = $this->receiver->receive((float) $this->settings->receiveTimeoutSeconds);
                     });
                     if ($delivery === null) {
                         continue;
@@ -154,7 +146,12 @@ final class RunCriticalWorkerHandler
             $failure = $exception;
         } catch (Throwable $exception) {
             $failure = new CriticalWorkerException(
-                CriticalWorkerError::TRANSPORT_FAILURE,
+                $exception instanceof BrokerTransportException
+                    ? match ($exception->errorCode) {
+                        BrokerTransportErrorCode::CONFIGURATION_INVALID,
+                        BrokerTransportErrorCode::TOPOLOGY_MISMATCH => CriticalWorkerError::CONFIGURATION_INVALID,
+                        default => CriticalWorkerError::TRANSPORT_FAILURE,
+                    } : CriticalWorkerError::UNEXPECTED_FAILURE,
                 $exception instanceof BrokerTransportException ? null : $exception,
                 $exception instanceof BrokerTransportException ? SafeCauseCode::TRANSPORT : SafeCauseCode::UNKNOWN,
             );
@@ -166,7 +163,7 @@ final class RunCriticalWorkerHandler
             throw $failure;
         }
         if ($stopReason === null) {
-            throw new CriticalWorkerException(CriticalWorkerError::TRANSPORT_FAILURE);
+            throw new CriticalWorkerException(CriticalWorkerError::UNEXPECTED_FAILURE);
         }
 
         return new CriticalWorkerReceipt($received, $completed, $alreadyCompleted, $rejected, $stopReason);

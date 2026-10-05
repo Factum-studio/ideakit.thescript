@@ -10,7 +10,9 @@ enum CriticalWorkerError: string
     case HANDLER_MISSING = 'handler_missing';
     case UNSUPPORTED_CONTRACT = 'unsupported_contract';
     case TRANSPORT_FAILURE = 'transport_failure';
+    case UNEXPECTED_FAILURE = 'unexpected_failure';
     case HANDLER_FAILURE = 'handler_failure';
+    case EXECUTION_DEADLINE_EXCEEDED = 'execution_deadline_exceeded';
     case EXECUTION_SCOPE_DIRTY = 'execution_scope_dirty';
     case CLEANUP_FAILURE = 'cleanup_failure';
 }

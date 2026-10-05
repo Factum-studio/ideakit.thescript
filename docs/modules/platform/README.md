@@ -42,22 +42,24 @@ Compose передаёт PHP host `rabbitmq` и внутренний порт 56
 Policy и AMQP-декларация выполняются отдельно в запущенном локальном окружении. GNU Make предоставляет короткие команды:
 
 ```bash
-make rabbitmq-policy
 make rabbitmq-topology
+make rabbitmq-policy
 make rabbitmq-check
 ```
 
 Прямой контейнерный эквивалент:
 
 ```bash
-docker compose exec -T rabbitmq su-exec rabbitmq sh /etc/ideakit-rabbitmq/apply-policy.sh
 docker compose exec -T php-fpm php yii platform-messaging/declare
+docker compose exec -T rabbitmq su-exec rabbitmq sh /etc/ideakit-rabbitmq/apply-policy.sh
 docker compose exec -T rabbitmq su-exec rabbitmq sh /etc/ideakit-rabbitmq/apply-policy.sh --check
 ```
 
 `rabbitmq-check` только читает broker state: проверяет оба exchanges, quorum queues, bindings и эффективную DLX policy, а не только работоспособность процесса. Отсутствие или расхождение топологии даёт ненулевой exit code без её исправления. `BROKER_SERVICE=rabbitmq-test` выбирает изолированный брокер только для `rabbitmq-policy` и `rabbitmq-check`; допустимы лишь `rabbitmq` и `rabbitmq-test`. `rabbitmq-topology` всегда использует конфигурацию приложения, а не этот параметр. Эти команды не удаляют объекты и не очищают очереди.
 
 Изолированный брокер запускается только с profile `messaging-test`, использует vhost `ideakit_transport_test`, синтетические credentials и tmpfs вместо рабочего volume. Его host-порт публикуется на `127.0.0.1:${TEST_RABBITMQ_PORT:-5673}`; контейнерные тесты используют `rabbitmq-test:5672`. Test configuration требует `APP_ENV=test` и явные `TEST_RABBITMQ_HOST`, `PORT`, `USER`, `PASSWORD`, `VHOST`, не подставляя рабочие credentials. Fixtures работают только с выделенным vhost и своими ресурсами; рабочие очереди не очищаются.
+
+Допуск consumer выполняется вручную: объявить topology → применить policy → получить успешный `rabbitmq-check` → разрешить запуск consumer. На одноразовом брокере проверены отказ при отсутствующей policy, конфликте действующей policy и отсутствующей очереди ошибок, а также успех после восстановления. Это операционная процедура, не автоматический production gate и не проверка перед каждым сообщением. До #39 пустой production registry всё равно запрещает подписку.
 
 Проверенные команды подготовки и запуска транспортных тестов:
 
@@ -111,6 +113,8 @@ Store захватывает по одной готовой записи `RABBIT
 `DELIVERED` означает принятие сообщения RabbitMQ, не выполнение обработчика. Relay — единственный владелец повторов публикации: `connection_failure`, `nacked` и `confirm_timeout` назначают ограниченный экспоненциальный повтор с jitter, пока не исчерпан лимит. `next_attempt_at` хранится в БД; процесс не ждёт срока повтора. Неоднозначный confirm сохраняет прежние outbox UUID, correlation UUID и payload. `UNKNOWN`, replacement message и ручная отправка `FAILED` в DLQ не используются.
 
 Операционные отказы останавливают запуск; сбой фиксации после публикации оставляет `PROCESSING` и прекращает дальнейшие захваты. Публичные ошибки содержат только [безопасный код](../../../modules/platform/application/enum/OutboxRelayError.php), без SQL и payload. Неожиданная локальная причина сохраняется как внутренний `previous`; CLI и разрешённые поля логов показывают только закрытую категорию `cause_code` (`PERSISTENCE`, `HANDLER`, `WORKER_RUNTIME`, `TRANSPORT`, `UNKNOWN`), не текст и не цепочку исходной ошибки. stdout содержит `claimed`, `delivered`, `retry_scheduled`, `failed`, `lease_lost`. Exit codes: 0 — штатный итог, 1 — операционный отказ, 2 — неверный CLI limit.
+
+Нетипизированное исключение publisher даёт `unexpected_failure/UNKNOWN`: место сбоя не доказывает транспортную причину. Проверено на PostgreSQL, что commit предшествует вызову publisher, запись сохраняет `PROCESSING`, payload и lease для восстановления, `DELIVERED` не устанавливается и следующая запись не захватывается. Правила повторов типизированных ошибок брокера не меняются.
 
 Ленивое DI не открывает сеть и не запускает relay при web/console bootstrap. [Конфигурация](../../../config/outbox_relay.php) строго разбирает пять положительных целочисленных строк; неверное значение отклоняется до claim:
 
@@ -177,6 +181,26 @@ docker compose exec -T -e APP_ENV=test -e APP_DEBUG=false -e 'TEST_DB_DSN=pgsql:
 
 Linux CLI runtime ограничивает число сообщений, общее время, время обработчика, broker I/O и память; SIGTERM, SIGINT и SIGQUIT останавливают запуск после текущей доставки, когда её можно безопасно подтвердить. Подписка использует manual ack и `prefetch=1`. [`CriticalWorkerController`](../../../modules/platform/presentation/console/CriticalWorkerController.php) предоставляет `platform-worker/critical` с `--limit` (1–10000) и `--maxRuntime` (1–3600 секунд). Ошибка параметров даёт exit 2, операционная ошибка — exit 1 с безопасным кодом, штатное завершение — exit 0 и числовые счётчики. `php yii help platform-worker/critical` проверен без подключения к брокеру.
 
+Для отказов worker проверены следующие закрытые диагностические коды:
+
+| Отказ | `reason` | `cause_code` |
+|---|---|---|
+| Типизированный `CONFIGURATION_INVALID` или `TOPOLOGY_MISMATCH`, дошедший до границы worker | `configuration_invalid` | `TRANSPORT` |
+| Остальная типизированная ошибка broker receiver, доставки или ACK/reject | `transport_failure` | `TRANSPORT` |
+| Неожиданная ошибка прикладного обработчика | `handler_failure` | `HANDLER` |
+| Истечение срока, обнаруженное локальным runtime до аварийного сигнала | `execution_deadline_exceeded` | `WORKER_RUNTIME` |
+| Незавершённая общая транзакция | `execution_scope_dirty` | `WORKER_RUNTIME` |
+| Другой неожиданный отказ, включая сырой сбой `receive()` | `unexpected_failure` | `UNKNOWN` |
+| Ошибка освобождения ресурсов без первичной ошибки | `cleanup_failure` | `TRANSPORT` или `WORKER_RUNTIME` по ресурсу |
+
+Исходная локальная причина сохраняется только во внутреннем `previous`; вывод и единственное событие `critical_worker.stopped` содержат закрытые коды без исходного исключения, SQL, payload или параметров соединения. Ошибка cleanup не заменяет первичную причину и добавляет `cleanup_failed`. Повреждённый envelope и неизвестный контракт остаются терминальным reject конкретной доставки, а не ошибкой процесса. При жёстком завершении сигналом SIGALRM гарантируется ненулевой выход, но печатаемый `reason` не обещается.
+
+[Процессный CLI-тест](../../../tests/integration/config/ConsoleErrorBoundaryTest.php) проверяет настоящий путь worker handler → controller → exit без подключения к брокеру: локальный сбой даёт `unexpected_failure cause_code=UNKNOWN`, типизированный отказ topology — `configuration_invalid cause_code=TRANSPORT`. В обоих случаях проверены exit 1, пустой stdout, безопасный stderr, одно событие worker и отсутствие повторного `console.unhandled_failure`. [Runtime-тест](../../../tests/integration/modules/platform/infrastructure/CriticalWorkerRuntimeTest.php) отдельно проверяет перехватываемое истечение с управляемым временем и существующие hard-stop сценарии SIGALRM. Проверенная команда runtime-теста:
+
+```bash
+docker compose run --rm --no-deps -e APP_ENV=test -e APP_DEBUG=false -e 'DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' -e 'TEST_DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' php-fpm vendor/bin/codecept run integration tests/integration/modules/platform/infrastructure/CriticalWorkerRuntimeTest.php --no-colors
+```
+
 Production [registry](../../../modules/platform/application/route/BackgroundCommandRegistry.php) сейчас намеренно пуст: до реализации Telegram-обработчика в #39 запуск `platform-worker/critical` возвращает `handler_missing` **до** подписки на очередь. Предварительная проверка требует обработчик для каждого зарегистрированного контракта очереди `critical`; сейчас production-маршрут по-прежнему один. Поддерживаемые routing keys задаются явно при регистрации маршрутов, а не берутся из сообщения. Команда не включена в Compose startup, Make start или healthchecks. Сквозной тест использует только отдельную [test composition](../../../tests/bin/critical-worker.php) и [идемпотентный test handler](../../../tests/fixtures/platform/PersistedTestCommandHandler.php), который сохраняет синтетический эффект в существующем outbox. Это не production-обработка Telegram update.
 
 Проверены [DI/CLI-тест](../../../tests/integration/config/PlatformCriticalWorkerContainerBindingsTest.php) и [PostgreSQL/RabbitMQ integration-тест](../../../tests/integration/modules/platform/infrastructure/CriticalWorkerRabbitMqTest.php): writer → relay confirm → ACK, повтор после crash между commit и ACK, явный дубль, DLQ, неожиданная ошибка, сигнал, hard timeout и откат незавершённой транзакции. Тест выполнялся только на `ideakit_test` и `ideakit_transport_test`:
@@ -186,6 +210,18 @@ docker compose exec -T -e APP_ENV=test -e APP_DEBUG=false -e 'TEST_DB_DSN=pgsql:
 ```
 
 Worker не делает reconnect/retry внутри процесса, не является daemon и не гарантирует exactly-once. Реальные прикладные действия, Telegram webhook и обработчик, автоматический запуск и scheduler остаются вне этого среза.
+
+## Безопасные ошибки консоли
+
+Общий [`SafeConsoleErrorHandler`](../../../commands/SafeConsoleErrorHandler.php) обрабатывает необработанные исключения после создания Yii console application, включая отказы конфигурации и DI до выполнения действия. При `APP_ENV=test` и `prod`, независимо от `APP_DEBUG`, процесс возвращает ненулевой код; неизвестный отказ выводит в stderr только `unexpected_failure cause_code=UNKNOWN`. Известные типизированные ошибки Platform сохраняют закрытые `reason` и `cause_code`. Исходное исключение, его message, previous, stack, SQL, payload и credentials не передаются в вывод и лог.
+
+Для необработанного отказа записывается одно безопасное событие `console.unhandled_failure`. Ошибка самой диагностики использует фиксированное резервное сообщение и не превращает отказ в успешный выход; при недоступном stderr сообщение может отсутствовать, но код остаётся ненулевым. Уже обработанные ошибки контроллера не логируются повторно общей границей. Штатное завершение сохраняет exit 0, неверный CLI limit — exit 2. Worker получает специализированный логгер явно, без глобальной привязки `Psr\Log\LoggerInterface`.
+
+Ошибки до создания Yii application и неперехватываемые PHP-fatal этой границей не покрываются. [Процессный тест](../../../tests/integration/config/ConsoleErrorBoundaryTest.php) проверяет фактические exit code, stdout, stderr и изолированный Yii-лог, включая обычный и резервный пути:
+
+```bash
+docker compose run --rm --no-deps -e APP_ENV=test -e APP_DEBUG=false php-fpm vendor/bin/codecept run integration tests/integration/config/ConsoleErrorBoundaryTest.php --no-colors
+```
 
 ## Проверка
 

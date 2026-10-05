@@ -327,7 +327,7 @@ final class RelayOutboxHandlerTest extends Unit
                 && !$failure instanceof BrokerTransportException
             ) {
                 self::assertSame(
-                    $stage === 'publish' ? SafeCauseCode::TRANSPORT : SafeCauseCode::PERSISTENCE,
+                    $stage === 'publish' ? SafeCauseCode::UNKNOWN : SafeCauseCode::PERSISTENCE,
                     $exception->causeCode,
                 );
             }

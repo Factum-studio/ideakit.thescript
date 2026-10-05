@@ -20,6 +20,7 @@ use tests\fixtures\platform\TestOutboxRoutes;
 use modules\platform\infrastructure\process\PcntlWorkerRuntime;
 use modules\platform\presentation\console\CriticalWorkerController;
 use Psr\Log\NullLogger;
+use Psr\Log\LoggerInterface;
 use RuntimeException;
 use Yii;
 use yii\db\Connection;
@@ -44,6 +45,7 @@ final class PlatformCriticalWorkerContainerBindingsTest extends Unit
         try {
             $config = require dirname(__DIR__, 3) . '/config/' . $application . '.php';
             self::assertIsArray($config);
+            self::assertFalse(Yii::$container->has(LoggerInterface::class));
             if ($application === 'console') {
                 self::assertSame(CriticalWorkerController::class, $config['controllerMap']['platform-worker']['class']);
             }

@@ -12,6 +12,7 @@ use modules\platform\application\dto\OutboxRelaySettings;
 use modules\platform\application\dto\OutboxWriteIntent;
 use modules\platform\application\enum\BrokerTransportErrorCode;
 use modules\platform\application\enum\OutboxRelayError;
+use modules\platform\application\enum\SafeCauseCode;
 use modules\platform\application\exception\BrokerTransportException;
 use modules\platform\application\exception\OutboxRelayException;
 use modules\platform\application\handler\RelayOutboxHandler;
@@ -26,6 +27,7 @@ use modules\platform\infrastructure\db\OutboxRelayRowMapper;
 use modules\platform\infrastructure\identity\RamseyOutboxLeaseTokenGenerator;
 use modules\platform\infrastructure\random\SecureRetryJitter;
 use Ramsey\Uuid\Uuid;
+use RuntimeException;
 use Yii;
 use yii\db\Connection;
 
@@ -86,6 +88,43 @@ final class OutboxRelayIntegrationTest extends Unit
         $receipt = $this->handler($publisher)->handle(new RelayOutboxCommand(10));
         self::assertSame(1, $receipt->delivered);
         self::assertSame('DELIVERED', $this->row($id)['status']);
+    }
+
+    public function testUnexpectedPublisherFailurePreservesLeaseAndStopsFurtherClaims(): void
+    {
+        $transaction = $this->db->beginTransaction();
+        $first = $this->write();
+        $second = $this->write();
+        $transaction->commit();
+        $failure = new RuntimeException('synthetic-sensitive-publisher');
+        $publisher = $this->createMock(IBrokerPublisher::class);
+        $publisher->expects(self::once())->method('publish')->willReturnCallback(function (BrokerEnvelope $envelope) use ($first, $failure): never {
+            self::assertSame($first, $envelope->outboxId);
+            self::assertNull($this->db->getTransaction());
+            self::assertFalse($this->db->pdo->inTransaction());
+            self::assertSame('PROCESSING', $this->row($first, $this->observer)['status']);
+            throw $failure;
+        });
+
+        try {
+            $this->handler($publisher)->handle(new RelayOutboxCommand(10));
+            self::fail('Expected unexpected publisher failure.');
+        } catch (OutboxRelayException $exception) {
+            self::assertSame(OutboxRelayError::UNEXPECTED_FAILURE, $exception->error);
+            self::assertSame(SafeCauseCode::UNKNOWN, $exception->causeCode);
+            self::assertSame('unexpected_failure', $exception->getMessage());
+            self::assertSame($failure, $exception->getPrevious());
+        }
+        $row = $this->row($first, $this->observer);
+        self::assertIsArray($row);
+        self::assertSame('PROCESSING', $row['status']);
+        self::assertSame(1, (int) $row['attempt_count']);
+        self::assertNotNull($row['locked_by']);
+        self::assertNotNull($row['locked_until']);
+        self::assertNull($row['delivered_at']);
+        self::assertNotNull($row['payload']);
+        self::assertSame('PENDING', $this->row($second)['status']);
+        self::assertSame(0, (int) $this->row($second)['attempt_count']);
     }
 
     /** @dataProvider failures */

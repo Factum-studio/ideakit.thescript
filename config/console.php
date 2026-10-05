@@ -20,6 +20,10 @@ $config = [
         '@modules'  => dirname(__DIR__) . '/modules',
     ],
     'components' => [
+        'errorHandler' => [
+            'class' => \app\commands\SafeConsoleErrorHandler::class,
+            'silentExitOnException' => false,
+        ],
         'cache' => [
             'class' => 'yii\caching\FileCache',
         ],

@@ -49,6 +49,7 @@ final class RunCriticalWorkerHandlerTest extends Unit
     private float $now = 10.0;
     private bool $signal = false;
     private bool $memoryLimit = false;
+    private ?Throwable $startFailure = null;
 
     protected function _before(): void
     {
@@ -59,6 +60,9 @@ final class RunCriticalWorkerHandlerTest extends Unit
         $this->logger = $this->createMock(LoggerInterface::class);
         $this->runtime->method('start')->willReturnCallback(function (): void {
             $this->events[] = 'runtime_start';
+            if ($this->startFailure !== null) {
+                throw $this->startFailure;
+            }
         });
         $this->runtime->method('shouldStop')->willReturnCallback(fn (): bool => $this->signal);
         $this->runtime->method('memoryLimitReached')->willReturnCallback(fn (): bool => $this->memoryLimit);
@@ -190,19 +194,37 @@ final class RunCriticalWorkerHandlerTest extends Unit
         $this->assertCleanup();
     }
 
+    public function testUnexpectedRuntimeStartFailureStopsBeforeReceiveAndRetainsCause(): void
+    {
+        $this->startFailure = new RuntimeException('synthetic-sensitive-runtime');
+        $this->receiver->expects(self::never())->method('receive');
+        $this->background->expects(self::never())->method('handle');
+        $this->logger->expects(self::once())->method('error')->with(
+            'critical_worker.stopped',
+            ['reason' => CriticalWorkerError::UNEXPECTED_FAILURE->value, 'cause_code' => 'UNKNOWN'],
+        );
+
+        $this->assertFailure(
+            CriticalWorkerError::UNEXPECTED_FAILURE,
+            expectedPrevious: $this->startFailure,
+            expectedCauseCode: SafeCauseCode::UNKNOWN,
+        );
+        self::assertSame(['guard', 'runtime_start', 'receiver_close', 'guard_close', 'runtime_close'], $this->events);
+    }
+
     public function testUnexpectedLocalReceiveFailureRetainsCauseWithoutLoggingIt(): void
     {
         $failure = new RuntimeException('synthetic-private-detail', 0, new RuntimeException('synthetic-inner-detail'));
         $this->receiver->expects(self::once())->method('receive')->willThrowException($failure);
         $this->logger->expects(self::once())->method('error')->with(
             'critical_worker.stopped',
-            ['reason' => CriticalWorkerError::TRANSPORT_FAILURE->value, 'cause_code' => 'TRANSPORT'],
+            ['reason' => CriticalWorkerError::UNEXPECTED_FAILURE->value, 'cause_code' => 'UNKNOWN'],
         );
 
         $this->assertFailure(
-            CriticalWorkerError::TRANSPORT_FAILURE,
+            CriticalWorkerError::UNEXPECTED_FAILURE,
             expectedPrevious: $failure,
-            expectedCauseCode: SafeCauseCode::TRANSPORT,
+            expectedCauseCode: SafeCauseCode::UNKNOWN,
         );
         $this->assertCleanup();
     }
@@ -244,8 +266,11 @@ final class RunCriticalWorkerHandlerTest extends Unit
     }
 
     /** @dataProvider transportFailures */
-    public function testTransportFailureIsNotMisclassifiedAsMalformed(string $operation, BrokerTransportErrorCode $code): void
-    {
+    public function testTransportFailureIsNotMisclassifiedAsMalformed(
+        string $operation,
+        BrokerTransportErrorCode $code,
+        CriticalWorkerError $expected = CriticalWorkerError::TRANSPORT_FAILURE,
+    ): void {
         $delivery = $this->delivery(new BrokerTransportException($code));
         if ($operation === 'receive') {
             $this->receiver->expects(self::once())->method('receive')
@@ -258,15 +283,22 @@ final class RunCriticalWorkerHandlerTest extends Unit
         $delivery->expects(self::never())->method('acknowledge');
         $delivery->expects(self::never())->method('reject');
 
-        $this->assertFailure(CriticalWorkerError::TRANSPORT_FAILURE);
+        $this->logger->expects(self::once())->method('error')->with(
+            'critical_worker.stopped',
+            ['reason' => $expected->value, 'cause_code' => 'TRANSPORT'],
+        );
+        $this->assertFailure($expected, expectedCauseCode: SafeCauseCode::TRANSPORT);
     }
 
-    /** @return iterable<string, array{string, BrokerTransportErrorCode}> */
+    /** @return iterable<string, array{string, BrokerTransportErrorCode, 2?: CriticalWorkerError}> */
     public static function transportFailures(): iterable
     {
         yield 'receive failure' => ['receive', BrokerTransportErrorCode::CONNECTION_FAILURE];
         yield 'invalid envelope outside decode' => ['receive', BrokerTransportErrorCode::INVALID_ENVELOPE];
         yield 'decode connection failure' => ['decode', BrokerTransportErrorCode::CONNECTION_FAILURE];
+        yield 'invalid receiver configuration' => ['receive', BrokerTransportErrorCode::CONFIGURATION_INVALID, CriticalWorkerError::CONFIGURATION_INVALID];
+        yield 'receiver topology mismatch' => ['receive', BrokerTransportErrorCode::TOPOLOGY_MISMATCH, CriticalWorkerError::CONFIGURATION_INVALID];
+        yield 'delivery topology mismatch' => ['decode', BrokerTransportErrorCode::TOPOLOGY_MISMATCH, CriticalWorkerError::CONFIGURATION_INVALID];
     }
 
     public function testMissingCriticalRegistrationRefusesReceive(): void

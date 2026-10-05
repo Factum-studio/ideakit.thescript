@@ -24,6 +24,19 @@ final class CriticalWorkerRuntimeTest extends Unit
         }
     }
 
+    public function testCatchableDeadlineHasSafeRuntimeCategory(): void
+    {
+        $process = $this->process('expired-catchable');
+        try {
+            $process->run();
+            self::assertSame(0, $process->getExitCode());
+            self::assertSame('execution_deadline_exceeded cause_code=WORKER_RUNTIME', $process->getOutput());
+            self::assertSame('', $process->getErrorOutput());
+        } finally {
+            $process->stop(0.0, SIGKILL);
+        }
+    }
+
     /** @dataProvider hardDeadlineScenarios */
     public function testHardDeadlineInterruptsRealProcess(string $scenario): void
     {

@@ -100,7 +100,7 @@ final class RelayOutboxHandler
                 $this->settings->maxAttempts,
             );
         } catch (Throwable $exception) {
-            throw new OutboxRelayException(OutboxRelayError::UNEXPECTED_FAILURE, $exception, SafeCauseCode::TRANSPORT);
+            throw new OutboxRelayException(OutboxRelayError::UNEXPECTED_FAILURE, $exception, SafeCauseCode::UNKNOWN);
         }
 
         return $receipt->outboxId === $claim->outboxId
