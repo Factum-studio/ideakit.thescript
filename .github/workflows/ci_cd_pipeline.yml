@@ -100,6 +100,49 @@ jobs:
     if: |
       (github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'dev')) ||
       (github.event_name == 'pull_request' && (github.base_ref == 'main' || github.base_ref == 'dev'))
+    env:
+      APP_ENV: test
+      APP_DEBUG: 'false'
+      APP_NAME: IDEAKIT
+      ADMIN_EMAIL: admin@example.test
+      SENDER_EMAIL: no-reply@example.test
+      SENDER_NAME: IDEAKIT
+      DB_DSN: 'pgsql:host=127.0.0.1;port=5432;dbname=ideakit_test'
+      DB_USERNAME: ideakit
+      DB_PASSWORD: local-development-only
+      TEST_DB_DSN: 'pgsql:host=127.0.0.1;port=5432;dbname=ideakit_test'
+      TEST_DB_USERNAME: ideakit
+      TEST_DB_PASSWORD: local-development-only
+      TEST_RABBITMQ_HOST: 127.0.0.1
+      TEST_RABBITMQ_PORT: '5673'
+      TEST_RABBITMQ_USER: transport-test
+      TEST_RABBITMQ_PASSWORD: local-transport-test-only
+      TEST_RABBITMQ_VHOST: ideakit_transport_test
+      RABBITMQ_HOST: 127.0.0.1
+      RABBITMQ_PORT: '5673'
+      RABBITMQ_USER: transport-test
+      RABBITMQ_PASSWORD: local-transport-test-only
+      RABBITMQ_VHOST: ideakit_transport_test
+      RABBITMQ_CONNECTION_TIMEOUT: '3'
+      RABBITMQ_CHANNEL_RPC_TIMEOUT: '5'
+      RABBITMQ_HEARTBEAT: '10'
+      RABBITMQ_READ_TIMEOUT: '25'
+      RABBITMQ_WRITE_TIMEOUT: '25'
+      RABBITMQ_CONFIRM_TIMEOUT: '5'
+      RABBITMQ_CONSUMER_POLL_TIMEOUT: '1'
+      OUTBOX_RELAY_LIMIT: '10'
+      OUTBOX_RELAY_MAX_ATTEMPTS: '5'
+      OUTBOX_RELAY_LEASE_SECONDS: '600'
+      OUTBOX_RELAY_RETRY_BASE_SECONDS: '15'
+      OUTBOX_RELAY_RETRY_MAX_SECONDS: '900'
+      CRITICAL_WORKER_MAX_MESSAGES: '1000'
+      CRITICAL_WORKER_MAX_RUNTIME_SECONDS: '3600'
+      CRITICAL_WORKER_HANDLER_TIMEOUT_SECONDS: '4'
+      CRITICAL_WORKER_BROKER_OPERATION_TIMEOUT_SECONDS: '10'
+      CRITICAL_WORKER_RECEIVE_TIMEOUT_SECONDS: '1'
+      CRITICAL_WORKER_MEMORY_LIMIT_MIB: '256'
+      CRITICAL_WORKER_SOFT_MEMORY_LIMIT_MIB: '192'
+      CRITICAL_WORKER_SHUTDOWN_TIMEOUT_SECONDS: '10'
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -109,35 +152,20 @@ jobs:
         with:
           php-version: '8.1'
           extensions: mbstring, sockets, pdo_pgsql, pcntl
+          ini-values: variables_order=EGPCS
           tools: composer
           coverage: none
 
       - name: Install dependencies
         run: composer install --no-progress --prefer-dist
 
-      - name: Create .env file for tests
-        run: |
-          cat > .env << EOF
-          DB_DSN=pgsql:host=localhost;port=5432;dbname=ideakit_test
-          DB_USERNAME=ideakit
-          DB_PASSWORD=local-development-only
-          ADMIN_EMAIL=admin@example.test
-          SENDER_EMAIL=no-reply@example.test
-          SENDER_NAME=IDEAKIT
-          APP_NAME=IDEAKIT
-          APP_ENV=test
-          APP_DEBUG=true
-          EOF
-
       - name: Start test environment (PostgreSQL)
         run: |
-          docker compose up -d postgres
-          sleep 5
-          docker compose exec postgres createdb -U ideakit ideakit_test || echo "Database already exists"
-          
-      - name: Run migrations for test DB
-        run: |
-          php tests/bin/yii migrate/up --interactive=0
+          docker compose up -d --wait postgres
+          exists=$(docker compose exec -T postgres psql -U ideakit -d postgres -v ON_ERROR_STOP=1 -Atc "SELECT 1 FROM pg_database WHERE datname = 'ideakit_test'")
+          if [ "$exists" != '1' ]; then
+            docker compose exec -T postgres createdb -U ideakit ideakit_test
+          fi
 
       - name: Prepare isolated RabbitMQ test broker
         run: |
@@ -145,15 +173,10 @@ jobs:
           docker compose exec -T rabbitmq-test su-exec rabbitmq sh /etc/ideakit-rabbitmq/apply-policy.sh
 
       - name: Run Codeception tests
-        env:
-          APP_ENV: test
-          TEST_RABBITMQ_HOST: 127.0.0.1
-          TEST_RABBITMQ_PORT: '5673'
-          TEST_RABBITMQ_USER: transport-test
-          TEST_RABBITMQ_PASSWORD: local-transport-test-only
-          TEST_RABBITMQ_VHOST: ideakit_transport_test
         run: |
-          vendor/bin/codecept run
+          php -r 'require "vendor/autoload.php"; require "vendor/yiisoft/yii2/Yii.php"; try { tests\fixtures\platform\PlatformTestEnvironment::preflight(); } catch (Throwable) { fwrite(STDERR, "test_environment_unavailable\n"); exit(1); }'
+          php tests/bin/yii migrate/up --interactive=0
+          composer test -- --no-colors
   deploy:
     runs-on: ubuntu-latest
     needs: [linter, unclestan, tests]

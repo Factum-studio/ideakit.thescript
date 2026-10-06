@@ -6,6 +6,7 @@ namespace tests\integration\config;
 
 use Codeception\Test\Unit;
 use Symfony\Component\Process\Process;
+use tests\fixtures\platform\PlatformTestEnvironment;
 use yii\helpers\FileHelper;
 
 final class ConsoleErrorBoundaryTest extends Unit
@@ -61,9 +62,16 @@ final class ConsoleErrorBoundaryTest extends Unit
     {
         $process = $this->process(['probe/fail', 'closed-stderr'], 'test', true, 'action');
         self::assertSame(1, $process->getExitCode());
-        self::assertSame('', $process->getOutput());
-        self::assertSame('', $process->getErrorOutput());
+        self::assertTrue($process->getOutput() === '', 'unexpected_child_stdout');
+        self::assertTrue($process->getErrorOutput() === '', 'unexpected_child_stderr');
         $this->assertSafeLog('unexpected_failure cause_code=UNKNOWN');
+    }
+
+    public function testProbeWorksWithoutAutomaticEnvironmentPopulation(): void
+    {
+        $process = $this->process(['probe/fail', 'worker'], 'test', true, 'action', [], ['-d', 'variables_order=GPCS']);
+        $this->assertFailure($process, 'handler_failure cause_code=HANDLER');
+        $this->assertSafeLog('handler_failure cause_code=HANDLER');
     }
 
     public function testSilentExitOptionCannotHideUnhandledFailure(): void
@@ -77,8 +85,8 @@ final class ConsoleErrorBoundaryTest extends Unit
     {
         $process = $this->process(['yii', 'help'], 'test', false, 'root');
         self::assertSame(0, $process->getExitCode());
-        self::assertStringContainsString('platform-worker', $process->getOutput());
-        self::assertSame('', $process->getErrorOutput());
+        self::assertTrue(str_contains($process->getOutput(), 'platform-worker'), 'unexpected_child_stdout');
+        self::assertTrue($process->getErrorOutput() === '', 'unexpected_child_stderr');
         self::assertSame('', $this->log());
     }
 
@@ -86,8 +94,8 @@ final class ConsoleErrorBoundaryTest extends Unit
     {
         $process = $this->process(['yii', 'platform-worker/critical', '--limit=0'], 'test', false, 'root');
         self::assertSame(2, $process->getExitCode());
-        self::assertSame('', $process->getOutput());
-        self::assertSame("configuration_invalid\n", $process->getErrorOutput());
+        self::assertTrue($process->getOutput() === '', 'unexpected_child_stdout');
+        self::assertTrue($process->getErrorOutput() === "configuration_invalid\n", 'unexpected_child_stderr');
         self::assertSame('', $this->log());
     }
 
@@ -97,7 +105,7 @@ final class ConsoleErrorBoundaryTest extends Unit
         $this->assertFailure($process, 'handler_missing cause_code=UNKNOWN');
         $log = $this->log();
         self::assertSame(1, substr_count($log, 'critical_worker.stopped'));
-        self::assertStringNotContainsString('console.unhandled_failure', $log);
+        self::assertFalse(str_contains($log, 'console.unhandled_failure'), 'unexpected_console_event');
         $this->assertNoDisclosure($log);
     }
 
@@ -108,12 +116,12 @@ final class ConsoleErrorBoundaryTest extends Unit
         $this->assertFailure($process, $reason . ' cause_code=' . $cause);
         $log = $this->log();
         self::assertSame(1, substr_count($log, 'critical_worker.stopped'));
-        self::assertStringContainsString($reason, $log);
-        self::assertStringContainsString($cause, $log);
-        self::assertStringNotContainsString('console.unhandled_failure', $log);
+        self::assertTrue(str_contains($log, $reason), 'missing_safe_reason');
+        self::assertTrue(str_contains($log, $cause), 'missing_safe_cause');
+        self::assertFalse(str_contains($log, 'console.unhandled_failure'), 'unexpected_console_event');
         $this->assertNoDisclosure($log);
         foreach (['previous', 'pgsql:', 'amqp://', 'synthetic-test-only', '#0'] as $marker) {
-            self::assertStringNotContainsString($marker, $process->getErrorOutput() . $log);
+            self::assertFalse(str_contains($process->getErrorOutput() . $log, $marker), 'diagnostic_disclosure');
         }
     }
 
@@ -168,18 +176,15 @@ final class ConsoleErrorBoundaryTest extends Unit
     /**
      * @param list<string> $arguments
      * @param array<string, string> $overrides
+     * @param list<string> $options
      */
-    private function process(array $arguments, string $env, bool $debug, string $scenario, array $overrides = []): Process
+    private function process(array $arguments, string $env, bool $debug, string $scenario, array $overrides = [], array $options = []): Process
     {
         $command = $scenario === 'root'
             ? [PHP_BINARY, ...$arguments]
-            : [PHP_BINARY, 'tests/bin/platform-console-error-probe.php', ...$arguments];
-        $process = new Process($command, dirname(__DIR__, 3), array_merge([
+            : [PHP_BINARY, ...$options, 'tests/bin/platform-console-error-probe.php', ...$arguments];
+        $process = new Process($command, dirname(__DIR__, 3), array_merge(PlatformTestEnvironment::applicationEnvironment(), [
             'APP_ENV' => $env, 'APP_DEBUG' => $debug ? 'true' : 'false',
-            'DB_DSN' => 'pgsql:host=127.0.0.1;port=1;dbname=ideakit_test',
-            'RABBITMQ_HOST' => '127.0.0.1', 'RABBITMQ_PORT' => '1',
-            'RABBITMQ_USER' => 'synthetic', 'RABBITMQ_PASSWORD' => 'synthetic-test-only',
-            'RABBITMQ_VHOST' => 'ideakit_transport_test',
             'CONSOLE_TEST_RUNTIME' => $this->runtime, 'CONSOLE_TEST_SCENARIO' => $scenario,
         ], $overrides), null, 10.0);
         $process->run();
@@ -190,8 +195,8 @@ final class ConsoleErrorBoundaryTest extends Unit
     private function assertFailure(Process $process, string $expected): void
     {
         self::assertSame(1, $process->getExitCode());
-        self::assertSame('', $process->getOutput());
-        self::assertSame($expected . "\n", $process->getErrorOutput());
+        self::assertTrue($process->getOutput() === '', 'unexpected_child_stdout');
+        self::assertTrue($process->getErrorOutput() === $expected . "\n", 'unexpected_child_stderr');
         $this->assertNoDisclosure($process->getOutput() . $process->getErrorOutput());
     }
 
@@ -199,7 +204,7 @@ final class ConsoleErrorBoundaryTest extends Unit
     {
         self::assertFileExists($this->runtime . '/console.log');
         $log = $this->log();
-        self::assertStringContainsString($expected, $log);
+        self::assertTrue(str_contains($log, $expected), 'missing_safe_diagnostic');
         self::assertSame(1, substr_count($log, 'console.unhandled_failure'));
         $this->assertNoDisclosure($log);
     }
@@ -214,7 +219,7 @@ final class ConsoleErrorBoundaryTest extends Unit
     private function assertNoDisclosure(string $output): void
     {
         foreach (['synthetic-sensitive-', 'RuntimeException', 'Stack trace', 'Caused by', 'SELECT ', 'PDOException'] as $marker) {
-            self::assertStringNotContainsString($marker, $output);
+            self::assertFalse(str_contains($output, $marker), 'diagnostic_disclosure');
         }
     }
 }

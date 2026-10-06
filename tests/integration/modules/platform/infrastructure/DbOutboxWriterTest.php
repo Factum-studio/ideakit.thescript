@@ -11,6 +11,7 @@ use modules\platform\application\enum\OutboxWriteOutcome;
 use modules\platform\application\exception\OutboxWriteException;
 use modules\telegram\application\message\TelegramUpdateReceivedPayload;
 use tests\fixtures\platform\TestOutboxRoutes;
+use tests\fixtures\platform\PlatformTestEnvironment;
 use modules\platform\infrastructure\db\DbOutboxWriter;
 use Yii;
 use yii\db\Connection;
@@ -236,6 +237,7 @@ final class DbOutboxWriterTest extends Unit
             [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
             $pipes,
             dirname(__DIR__, 5),
+            PlatformTestEnvironment::databaseEnvironment(),
         );
         self::assertIsResource($process);
         try {

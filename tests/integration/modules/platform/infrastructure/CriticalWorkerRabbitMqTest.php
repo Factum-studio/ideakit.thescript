@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace tests\integration\modules\platform\infrastructure;
 
+use tests\fixtures\platform\PlatformTestEnvironment;
 use Codeception\Test\Unit;
 use modules\platform\application\command\RelayOutboxCommand;
 use modules\platform\application\dto\BrokerEnvelope;
@@ -173,7 +174,7 @@ final class CriticalWorkerRabbitMqTest extends Unit
             $message = $this->originalFromWriterAndRelay();
             $failure = $this->runWorker('unexpected');
             self::assertSame(1, $failure->getExitCode());
-            self::assertStringContainsString('handler_failure', $failure->getErrorOutput());
+            self::assertTrue(str_contains($failure->getErrorOutput(), 'handler_failure'), 'unexpected_child_stderr');
             self::assertSame(0, $this->effectCount($message->outboxId));
             $retry = $this->runWorker('normal');
             self::assertSame(0, $retry->getExitCode());
@@ -215,7 +216,7 @@ final class CriticalWorkerRabbitMqTest extends Unit
             $message = $this->originalFromWriterAndRelay();
             $failure = $this->runWorker('dirty');
             self::assertSame(1, $failure->getExitCode());
-            self::assertStringContainsString('execution_scope_dirty', $failure->getErrorOutput());
+            self::assertTrue(str_contains($failure->getErrorOutput(), 'execution_scope_dirty'), 'unexpected_child_stderr');
             self::assertSame(0, $this->effectCount($message->outboxId));
             self::assertSame(0, $this->runWorker('normal')->getExitCode());
             self::assertSame(1, $this->effectCount($message->outboxId));
@@ -300,17 +301,12 @@ final class CriticalWorkerRabbitMqTest extends Unit
 
     private function worker(string $scenario, int $limit = 1, int $maxRuntime = 20): Process
     {
-        $dsn = getenv('TEST_DB_DSN');
-        self::assertIsString($dsn);
-        self::assertMatchesRegularExpression('/^pgsql:.*;dbname=ideakit_test(?:;|$)/', $dsn);
-
         return new Process([
             PHP_BINARY, 'tests/bin/critical-worker.php', 'platform-worker/critical',
             '--limit=' . $limit, '--maxRuntime=' . $maxRuntime,
-        ], dirname(__DIR__, 5), [
-            'APP_ENV' => 'test', 'APP_DEBUG' => 'false', 'TEST_DB_DSN' => $dsn,
-            'DB_DSN' => $dsn, 'WORKER_TEST_SCENARIO' => $scenario,
-        ], null, 30.0);
+        ], dirname(__DIR__, 5), array_merge(PlatformTestEnvironment::workerEnvironment(), [
+            'WORKER_TEST_SCENARIO' => $scenario,
+        ]), null, 30.0);
     }
 
     /** @param callable(): void $test */

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace tests\integration\modules\platform\infrastructure;
 
+use tests\fixtures\platform\PlatformTestEnvironment;
 use Codeception\Test\Unit;
 use modules\platform\application\dto\OutboxRelayClaim;
 use modules\platform\application\dto\OutboxRelayDecision;
@@ -383,7 +384,7 @@ final class DbOutboxRelayStoreTest extends Unit
                 $claim->claimedAt->format('Y-m-d\TH:i:s.uP'), $claim->leaseUntil->format('Y-m-d\TH:i:s.uP'),
                 $claim->envelope?->correlationId, $claim->envelope?->payload->technicalFields()['update_id'],
             ], JSON_THROW_ON_ERROR),
-        ], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, dirname(__DIR__, 5));
+        ], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, dirname(__DIR__, 5), PlatformTestEnvironment::databaseEnvironment());
         self::assertIsResource($process);
         try {
             fclose($pipes[0]);

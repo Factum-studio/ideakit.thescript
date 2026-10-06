@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace tests\integration\config;
 
+use tests\fixtures\platform\PlatformTestEnvironment;
 use Codeception\Test\Unit;
 use DateTimeImmutable;
 use modules\platform\application\dto\OutboxRelayClaim;
@@ -36,8 +37,7 @@ final class PlatformOutboxRelayContainerBindingsTest extends Unit
         $originalContainer = Yii::$container;
         $originalEnvironment = $_ENV;
         Yii::$container = new Container();
-        $_ENV['RABBITMQ_HOST'] = '127.0.0.1';
-        $_ENV['RABBITMQ_PORT'] = '1';
+        $_ENV = array_replace($_ENV, PlatformTestEnvironment::applicationEnvironment());
         try {
             $config = require dirname(__DIR__, 3) . '/config/' . $application . '.php';
             self::assertIsArray($config);

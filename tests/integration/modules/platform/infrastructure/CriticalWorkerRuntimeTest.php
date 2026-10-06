@@ -10,6 +10,7 @@ use modules\platform\application\exception\CriticalWorkerException;
 use modules\platform\infrastructure\process\PcntlWorkerRuntime;
 use Symfony\Component\Process\Exception\ProcessSignaledException;
 use Symfony\Component\Process\Process;
+use tests\fixtures\platform\PlatformTestEnvironment;
 
 final class CriticalWorkerRuntimeTest extends Unit
 {
@@ -31,7 +32,7 @@ final class CriticalWorkerRuntimeTest extends Unit
             $process->run();
             self::assertSame(0, $process->getExitCode());
             self::assertSame('execution_deadline_exceeded cause_code=WORKER_RUNTIME', $process->getOutput());
-            self::assertSame('', $process->getErrorOutput());
+            self::assertTrue($process->getErrorOutput() === '', 'unexpected_child_stderr');
         } finally {
             $process->stop(0.0, SIGKILL);
         }
@@ -137,20 +138,15 @@ final class CriticalWorkerRuntimeTest extends Unit
         $process->run();
         self::assertNotSame(0, $process->getExitCode());
         self::assertStringNotContainsString('SUCCESS', $process->getOutput());
-        self::assertStringContainsString('Allowed memory size', $process->getErrorOutput());
+        self::assertTrue(str_contains($process->getErrorOutput(), 'Allowed memory size'), 'unexpected_child_stderr');
     }
 
     /** @param list<string> $options */
     private function process(string $scenario, array $options = []): Process
     {
-        self::assertSame('test', getenv('APP_ENV'));
-        $dsn = getenv('TEST_DB_DSN');
-        self::assertIsString($dsn);
-        self::assertMatchesRegularExpression('/^pgsql:.*;dbname=ideakit_test(?:;|$)/', $dsn);
-
         return new Process([
             PHP_BINARY, ...$options, 'tests/bin/critical-worker-runtime.php', $scenario,
-        ], dirname(__DIR__, 5), ['APP_ENV' => 'test', 'TEST_DB_DSN' => $dsn, 'DB_DSN' => $dsn], null, 5.0);
+        ], dirname(__DIR__, 5), PlatformTestEnvironment::databaseEnvironment(), null, 5.0);
     }
 
     private static function awaitExit(Process $process): void

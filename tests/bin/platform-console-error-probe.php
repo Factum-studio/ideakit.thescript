@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use tests\fixtures\platform\ConsoleFailureProbeController;
 use tests\fixtures\platform\CriticalWorkerFailureProbe;
+use tests\fixtures\platform\PlatformTestEnvironment;
 use modules\platform\application\handler\RunCriticalWorkerHandler;
 use modules\platform\application\enum\BrokerTransportErrorCode;
 use yii\console\Application;
@@ -11,6 +12,18 @@ use yii\log\FileTarget;
 
 $root = dirname(__DIR__, 2);
 require $root . '/vendor/autoload.php';
+try {
+    foreach (array_keys(PlatformTestEnvironment::applicationEnvironment()) as $key) {
+        $value = getenv($key);
+        if (!is_string($value) || $value === '') {
+            throw new RuntimeException('configuration_invalid');
+        }
+        $_ENV[$key] = $value;
+    }
+} catch (Throwable) {
+    fwrite(STDERR, "configuration_invalid\n");
+    exit(2);
+}
 define('YII_ENV', getenv('APP_ENV'));
 define('YII_DEBUG', getenv('APP_DEBUG') === 'true');
 require $root . '/vendor/yiisoft/yii2/Yii.php';

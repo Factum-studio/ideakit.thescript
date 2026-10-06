@@ -225,6 +225,39 @@ docker compose run --rm --no-deps -e APP_ENV=test -e APP_DEBUG=false php-fpm ven
 
 ## Проверка
 
+### Явное тестовое окружение
+
+[PlatformTestEnvironment](../../../tests/fixtures/platform/PlatformTestEnvironment.php) проверяет выделенные подключения и передаёт дочерним процессам явные настройки. Рабочие `DB_*` и `RABBITMQ_*` не заменяют отсутствующие `TEST_*`. Значения фикстуры в `$_ENV` имеют приоритет над process environment; изменённые globals восстанавливаются тестами. Credentials передаются через environment, не через CLI arguments.
+
+| Настройка | Docker PHP 8.2.32 | PHP 8.1 host-runner CI |
+|---|---|---|
+| `APP_ENV` / `APP_DEBUG` | `test` / `false` | `test` / `false` |
+| `DB_DSN` и `TEST_DB_DSN` | `pgsql:host=postgres;port=5432;dbname=ideakit_test` | `pgsql:host=127.0.0.1;port=5432;dbname=ideakit_test` |
+| `DB_USERNAME` и `TEST_DB_USERNAME` | `ideakit` | `ideakit` |
+| `DB_PASSWORD` и `TEST_DB_PASSWORD` | `local-development-only` | `local-development-only` |
+| `RABBITMQ_HOST` и `TEST_RABBITMQ_HOST` | `rabbitmq-test` | `127.0.0.1` |
+| `RABBITMQ_PORT` и `TEST_RABBITMQ_PORT` | `5672` | `5673` |
+| `RABBITMQ_USER` и `TEST_RABBITMQ_USER` | `transport-test` | `transport-test` |
+| `RABBITMQ_PASSWORD` и `TEST_RABBITMQ_PASSWORD` | `local-transport-test-only` | `local-transport-test-only` |
+| `RABBITMQ_VHOST` и `TEST_RABBITMQ_VHOST` | `ideakit_transport_test` | `ideakit_transport_test` |
+
+Это синтетические локальные значения. Полный baseline приложения и лимитов RabbitMQ, `OUTBOX_RELAY_*`, `CRITICAL_WORKER_*` задан в [CI test job](../../../.github/workflows/ci_cd_pipeline.yml) и test fixture. Для Docker меняются только адреса из таблицы; все настройки передаются явно через `docker compose run --rm --no-deps -e … php-fpm`. Перед запуском пересобирают `php-fpm`, поскольку source bind mount отсутствует. Overrides конкретного сценария применяются последними, включая намеренно неверные значения negative-тестов. DI/console probes используют собственную синтетическую конфигурацию без сетевого I/O и без developer `.env`.
+
+Предварительная проверка требует Linux CLI, расширения `pdo_pgsql`, `mbstring`, `sockets`, `pcntl`, `posix` и доступные signal/alarm-функции как у родителя, так и у обычного дочернего PHP. Затем проверяются фактическая `ideakit_test` и соединение с test vhost без декларации topology. Отсутствие обязательной возможности — ошибка, не skip. Отрицательный runtime-сценарий отдельно отключает `pcntl_alarm` и сохраняет ожидаемый отказ.
+
+В подготовленном PHP runtime используются команды:
+
+```bash
+php -r 'require "vendor/autoload.php"; require "vendor/yiisoft/yii2/Yii.php"; try { tests\fixtures\platform\PlatformTestEnvironment::preflight(); } catch (Throwable) { fwrite(STDERR, "test_environment_unavailable\n"); exit(1); }'
+vendor/bin/codecept run unit tests/unit/modules/platform/infrastructure/PlatformTestEnvironmentTest.php --no-colors
+vendor/bin/codecept run integration tests/integration/modules/platform/infrastructure --no-colors
+composer test -- --no-colors
+```
+
+Локальная проверка выполняется на Docker PHP 8.2.32. PHP 8.1 host-runner сохранён в CI с `variables_order=EGPCS`; его успешность требует отдельного свежего GitHub Actions run и не следует из Docker-прогона. Локальный PHP не обязателен для Docker, а host-runner использует тот же Composer lock без контейнерного PHP. CI ожидает готовности PostgreSQL, проверяет наличие тестовой БД и не маскирует ошибки её создания. Временный `.env` в test job не создаётся; deploy и остальные jobs не менялись.
+
+### Наборы проверок
+
 Структура, ограничения и индексы проверяются [schema-тестом](../../../tests/integration/modules/platform/infrastructure/OutboxMessageSchemaTest.php). [Lifecycle-тест](../../../tests/integration/modules/platform/infrastructure/OutboxMigrationLifecycleTest.php) вызывает откат и повторное применение внутри откатываемой PostgreSQL-транзакции и сравнивает схемы родительских таблиц и Yii migration history. [Тест writer](../../../tests/integration/modules/platform/infrastructure/DbOutboxWriterTest.php) проверяет запись, общий commit/rollback, повторы и конкурентный конфликт в тестовой PostgreSQL.
 
 [DI-тест](../../../tests/integration/config/PlatformOutboxContainerBindingsTest.php) подтверждает общее соединение и rollback для web- и console-конфигураций. [Архитектурный тест](../../../tests/unit/modules/platform/PlatformArchitectureTest.php) защищает публичный Application-контракт от framework/Infrastructure-зависимостей и Platform Infrastructure от импорта Telegram internals.
@@ -235,12 +268,6 @@ docker compose run --rm --no-deps -e APP_ENV=test -e APP_DEBUG=false php-fpm ven
 docker compose exec -T php-fpm vendor/bin/codecept run integration tests/integration/config/PlatformBrokerContainerBindingsTest.php --no-colors
 ```
 
-В запущенном локальном Compose-окружении с подготовленными тестовой БД и изолированным брокером проверки выполняются так:
-
-```bash
-docker compose exec -T php-fpm vendor/bin/codecept run unit tests/unit/modules/platform --no-colors
-docker compose exec -T -e APP_ENV=test -e APP_DEBUG=false -e 'TEST_DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' -e TEST_RABBITMQ_HOST=rabbitmq-test -e TEST_RABBITMQ_PORT=5672 -e TEST_RABBITMQ_USER=transport-test -e TEST_RABBITMQ_PASSWORD=local-transport-test-only -e TEST_RABBITMQ_VHOST=ideakit_transport_test php-fpm vendor/bin/codecept run integration tests/integration/modules/platform/infrastructure --no-colors
-docker compose exec -T -e APP_ENV=test -e APP_DEBUG=false -e 'TEST_DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' php-fpm vendor/bin/codecept run integration tests/integration/config/PlatformOutboxContainerBindingsTest.php --no-colors
-```
+Для общего прогона используется полный baseline из раздела «Явное тестовое окружение» выше, а не настройки работающего web-контейнера. Это относится и к отдельным integration-командам: сокращённый набор `-e` не заменяет обязательные `DB_*`, `TEST_DB_*`, `RABBITMQ_*`, `TEST_RABBITMQ_*` и лимиты.
 
 Проверка запускается только на отдельной тестовой PostgreSQL. Применение и откат миграции не выполняются автоматически при запуске приложения.

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace tests\integration\modules\platform\infrastructure;
 
+use tests\fixtures\platform\PlatformTestEnvironment;
 use Codeception\Test\Unit;
 use modules\platform\application\command\RelayOutboxCommand;
 use modules\platform\application\dto\OutboxRelayClaim;
@@ -273,17 +274,12 @@ final class OutboxMaintenanceRabbitMqTest extends Unit
 
     private function worker(int $limit, string $scenario = 'normal'): Process
     {
-        $dsn = getenv('TEST_DB_DSN');
-        self::assertIsString($dsn);
-        self::assertMatchesRegularExpression('/^pgsql:.*;dbname=ideakit_test(?:;|$)/', $dsn);
-
         return new Process([
             PHP_BINARY, 'tests/bin/critical-worker.php', 'platform-worker/critical',
             '--limit=' . $limit, '--maxRuntime=20',
-        ], dirname(__DIR__, 5), [
-            'APP_ENV' => 'test', 'APP_DEBUG' => 'false', 'TEST_DB_DSN' => $dsn,
-            'DB_DSN' => $dsn, 'WORKER_TEST_SCENARIO' => $scenario,
-        ], null, 30.0);
+        ], dirname(__DIR__, 5), array_merge(PlatformTestEnvironment::workerEnvironment(), [
+            'WORKER_TEST_SCENARIO' => $scenario,
+        ]), null, 30.0);
     }
 
     private function assertQueueCount(string $queue, int $expected): void
