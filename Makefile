@@ -3,8 +3,17 @@
 COMPOSE ?= docker compose
 SERVICE ?=
 TAIL ?= 100
+BROKER_SERVICE ?= rabbitmq
+
+ifneq ($(BROKER_SERVICE),rabbitmq)
+ifneq ($(BROKER_SERVICE),rabbitmq-test)
+$(error BROKER_SERVICE must be rabbitmq or rabbitmq-test)
+endif
+endif
 
 .PHONY: help config build start stop restart status logs logs-follow requirements console diagnose test-migrate test-db-create test-db-refresh coverage-generate coverage-download-report
+.PHONY: rabbitmq-policy rabbitmq-topology rabbitmq-check test-rabbitmq
+.PHONY: outbox-relay
 
 help:
 	@echo "Available targets:"
@@ -20,6 +29,11 @@ help:
 	@echo "  requirements  Check PHP platform and Yii requirements"
 	@echo "  console       Check the Yii console"
 	@echo "  diagnose      Diagnose an already running environment"
+	@echo "  rabbitmq-policy    Apply the tracked local broker policy"
+	@echo "  rabbitmq-topology  Declare the configured application topology"
+	@echo "  rabbitmq-check     Verify local broker topology and effective policy"
+	@echo "  test-rabbitmq      Prepare the isolated broker and run transport tests"
+	@echo "  outbox-relay       Publish one bounded batch from the configured outbox"
 	@echo "  test-migrate  Test migrate"
 	@echo "  test-db-create  Test db create"
 	@echo "  test-db-refresh  Test db refresh"
@@ -29,6 +43,7 @@ help:
 	@echo "Parameters:"
 	@echo "  SERVICE=<name>  Limit logs to a Compose service"
 	@echo "  TAIL=<lines>    Number of log lines (default: 100)"
+	@echo "  BROKER_SERVICE=<rabbitmq|rabbitmq-test>  Broker for policy/check (default: rabbitmq)"
 
 config:
 	$(COMPOSE) config --quiet
@@ -64,6 +79,26 @@ requirements:
 
 console:
 	$(COMPOSE) exec -T php-fpm php yii
+
+rabbitmq-policy:
+	$(COMPOSE) exec -T $(BROKER_SERVICE) su-exec rabbitmq sh /etc/ideakit-rabbitmq/apply-policy.sh
+
+rabbitmq-topology:
+	$(COMPOSE) exec -T php-fpm php yii platform-messaging/declare
+
+outbox-relay:
+	$(COMPOSE) exec -T php-fpm php yii platform-outbox/relay
+
+rabbitmq-check:
+	$(COMPOSE) exec -T $(BROKER_SERVICE) su-exec rabbitmq sh /etc/ideakit-rabbitmq/apply-policy.sh --check
+
+test-rabbitmq:
+	$(COMPOSE) config --quiet
+	$(COMPOSE) build php-fpm
+	$(COMPOSE) up -d --wait php-fpm
+	$(COMPOSE) --profile messaging-test up -d --wait rabbitmq-test
+	$(COMPOSE) exec -T rabbitmq-test su-exec rabbitmq sh /etc/ideakit-rabbitmq/apply-policy.sh
+	$(COMPOSE) exec -T -e APP_ENV=test -e TEST_RABBITMQ_HOST=rabbitmq-test -e TEST_RABBITMQ_PORT=5672 -e TEST_RABBITMQ_USER=transport-test -e TEST_RABBITMQ_PASSWORD=local-transport-test-only -e TEST_RABBITMQ_VHOST=ideakit_transport_test php-fpm vendor/bin/codecept run integration tests/integration/modules/platform/infrastructure/rabbitmq --no-colors
 
 diagnose:
 	$(COMPOSE) config --quiet

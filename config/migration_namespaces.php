@@ -10,4 +10,5 @@ return [
     'core\\infrastructure\\migrations',
     'modules\\users\\infrastructure\\migrations',
     'modules\\telegram\\infrastructure\\migrations',
+    'modules\\platform\\infrastructure\\migrations',
 ];

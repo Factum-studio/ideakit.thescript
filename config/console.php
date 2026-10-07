@@ -20,6 +20,10 @@ $config = [
         '@modules'  => dirname(__DIR__) . '/modules',
     ],
     'components' => [
+        'errorHandler' => [
+            'class' => \app\commands\SafeConsoleErrorHandler::class,
+            'silentExitOnException' => false,
+        ],
         'cache' => [
             'class' => 'yii\caching\FileCache',
         ],
@@ -30,12 +34,30 @@ $config = [
                     'levels' => ['error', 'warning'],
                     'logVars' => [],
                 ],
+                [
+                    'class' => 'yii\log\FileTarget',
+                    'levels' => ['info'],
+                    'categories' => ['platform.outbox_maintenance'],
+                    'logVars' => [],
+                ],
             ],
         ],
         'db' => $db,
     ],
     'params' => $params,
     'controllerMap' => [
+        'platform-outbox' => [
+            'class' => \modules\platform\presentation\console\OutboxRelayController::class,
+        ],
+        'platform-outbox-maintenance' => [
+            'class' => \modules\platform\presentation\console\OutboxMaintenanceController::class,
+        ],
+        'platform-messaging' => [
+            'class' => \modules\platform\presentation\console\MessagingController::class,
+        ],
+        'platform-worker' => [
+            'class' => \modules\platform\presentation\console\CriticalWorkerController::class,
+        ],
 //        'fixture' => [ // Fixture generation command line.
 //            'class' => 'yii\faker\FixtureController',
 //        ],
