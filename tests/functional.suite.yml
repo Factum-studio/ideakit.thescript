@@ -12,3 +12,8 @@ modules:
       - Filesystem
       - Yii2
       - Asserts
+    config:
+        Yii2:
+            configFile: tests/config/telegram-webhook.php
+            transaction: false
+            cleanup: false

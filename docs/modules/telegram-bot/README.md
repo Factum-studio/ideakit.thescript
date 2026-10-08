@@ -3,8 +3,43 @@
 ## Реализованная часть
 
 Подготовлены PostgreSQL-таблицы `telegram_bot_sessions` для состояния диалога и `telegram_updates`
-для надёжного приёма входящих обновлений. Webhook, управление диалогом и отправка сообщений
-не реализованы.
+для надёжного приёма входящих обновлений. HTTP-граница webhook проверена в тестовой композиции,
+но не подключена к production. Атомарный приём inbox/outbox, управление диалогом и отправка сообщений
+ещё не реализованы.
+
+## HTTP-граница webhook
+
+[Контроллер](../../../modules/telegram/presentation/controller/WebhookController.php) вызывает только
+[IAcceptTelegramUpdate](../../../modules/telegram/application/port/IAcceptTelegramUpdate.php).
+Неизменяемая команда содержит серверный bot key, числовой Telegram update ID, тип обновления,
+nullable chat ID, причину игнорирования, исходный JSON, версию payload и его SHA-256.
+У проигнорированного обновления chat ID остаётся `null`. Числовой update ID не является UUID inbox:
+receipt содержит отдельный внутренний UUID и исход `ACCEPTED` либо `DUPLICATE`.
+Только после такого receipt возвращается `200 {"ok":true}`. Контроллер не пишет в БД,
+не вызывает Users или Platform writer и не повторяет приём автоматически.
+
+[Web fragment](../../../config/telegram_webhook.php) допускает только фактический
+`POST /telegram/webhook` без query string. Method override не меняет метод webhook.
+Другие методы получают `405` с `Allow: POST`, а HEAD — без тела. Альтернативный Yii action URL,
+дополнительные сегменты и неканонические адреса не достигают приёма. Исключение административного JWT
+и отключение CSRF ограничены этим входом; другие endpoints сохраняют прежние проверки.
+
+Настройки `TELEGRAM_BOT_KEY` и `TELEGRAM_WEBHOOK_SECRET` загружаются лениво после начальных HTTP gates.
+Secret проверяется до чтения тела. Принимается JSON с UTF-8 без сжатия; фактический предел тела —
+65 536 байт, независимо от Content-Length. Parser вызывается один раз, hash считается по исходным байтам.
+Nginx применяет отдельный предел 64k непосредственно в точном location и не пишет его access log;
+общий предел остальных маршрутов остаётся 10m.
+
+Отказы возвращают только `error.code` и закрытый `error.message`: неверный запрос/update — 400,
+secret — 403, метод — 405, размер — 413, media/encoding — 415, недоступность приёма/настроек — 503,
+неожиданная ошибка — 500. Ошибки до action также защищены. Для чувствительного пути debug/Gii
+исключаются до bootstrap; журнал содержит только безопасный reason, HTTP-статус и серверный correlation ID,
+без body, secret и исходного исключения. Обычная dev-композиция сохраняется.
+
+**Граница активации:** основной `config/web.php` не подключает fragment. Тестовый acceptor находится
+только в tests и ничего не сохраняет. Production endpoint и JWT-исключение будут подключены вместе
+с настоящим атомарным acceptor в следующем срезе #39. Этот HTTP-срез не реализует конкурентную
+дедупликацию, worker, сессии, Telegram API или административную аутентификацию.
 
 ## Транспортные модели
 
@@ -17,7 +52,7 @@
 для некорректного JSON или недостоверного `update_id` — безопасную ошибку до записи в inbox.
 У проигнорированного callback сохраняется только ID запроса для будущего подтверждения, не его `data`.
 Данные callback в результате parser остаются непроверенными. Отдельный codec ниже может проверить
-их подпись, но parser сам его не вызывает. Webhook, обработчики сессий и исходящее подтверждение
+их подпись, но parser сам его не вызывает. Production-приём, обработчики сессий и исходящее подтверждение
 callback пока не реализованы.
 
 Отдельный классификатор сопоставляет текст `MessageUpdate` с `/start`, точным текстом
@@ -41,7 +76,7 @@ reply-кнопок `Следующая идея` и `Отменить` либо 
 
 Проверенная подпись подтверждает только целостность кнопки, но не право выполнить действие.
 Получение доверенного профиля, подключение codec к конфигурации приложения, проверки сессии и
-бизнес-доступа, webhook и ответ на callback остаются для следующих срезов.
+бизнес-доступа, production-приём и ответ на callback остаются для следующих срезов.
 
 ## Владение данными
 
@@ -66,7 +101,7 @@ Telegram владеет состоянием диалога и inbox входя�
   Последующие записи должны явно обновлять `updated_at`.
 
 Миграция не реализует увеличение ревизий, optimistic locking, истечение срока черновика или проверку доступа к заявке.
-Публичных Application-контрактов, HTTP endpoints, workers, Redis-ключей и внешних адаптеров в этом срезе нет.
+Эта миграция не реализует Application-сценарии, HTTP endpoints, workers, Redis-ключи и внешние адаптеры.
 
 ### Входящие обновления
 
@@ -80,7 +115,7 @@ Telegram владеет состоянием диалога и inbox входя�
 - Хеш payload хранится как lowercase SHA-256; число попыток не может быть отрицательным.
 
 Схема не реализует захват lease, повторные попытки, очистку payload или переходы между состояниями.
-Repository, Application-команд, webhook, workers, RabbitMQ и scheduler в этом срезе нет.
+Repository, сохраняющего Application-handler, workers и scheduler приёма пока нет.
 
 ## Миграции
 
@@ -102,6 +137,20 @@ docker compose exec -T -e APP_ENV=test -e APP_DEBUG=false -e 'DB_DSN=pgsql:host=
 не используйте `fresh` или общий откат для рабочей базы.
 
 ## Проверки
+
+[Functional-тест](../../../tests/functional/modules/telegram/WebhookCest.php) использует настоящий web config
+и fragment с test-only acceptor: проверяет HTTP gates, receipt, отсутствие побочных эффектов,
+CSRF/JWT scope и отдельные Yii-процессы для безопасных ошибок и dev bootstrap.
+
+После пересборки application image:
+
+```bash
+docker compose run --rm --no-deps -e APP_ENV=test -e APP_DEBUG=false -e 'DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' -e 'TEST_DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' php-fpm vendor/bin/codecept run functional tests/functional/modules/telegram/WebhookCest.php --no-colors
+docker compose run --rm --no-deps -e APP_ENV=test -e APP_DEBUG=false -e 'DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' -e 'TEST_DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' php-fpm vendor/bin/codecept run unit tests/unit/modules/telegram --no-colors
+```
+
+Полный regression требует [явного тестового окружения Platform](../platform/README.md#явное-тестовое-окружение),
+проверенных `ideakit_test` и `ideakit_transport_test`. Docker PHP 8.2.32 не подтверждает CI на PHP 8.1.
 
 Unit-тесты транспортных моделей, parser и callback codec:
 
