@@ -39,8 +39,8 @@ if (in_array($mode, ['ordinary', 'composition'], true)) {
     echo json_encode([
         'debug' => isset($config['modules']['debug']) && in_array('debug', $config['bootstrap'], true),
         'gii' => isset($config['modules']['gii']) && in_array('gii', $config['bootstrap'], true),
-        'production_inactive' => !isset($base['modules']['telegram'])
-            && !isset($base['container']['singletons'][modules\telegram\application\port\IAcceptTelegramUpdate::class]),
+        'production_active' => isset($base['modules']['telegram'])
+            && Yii::$container->has(modules\telegram\application\port\IAcceptTelegramUpdate::class),
     ], JSON_THROW_ON_ERROR);
     exit(0);
 }

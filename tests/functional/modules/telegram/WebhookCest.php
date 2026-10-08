@@ -199,7 +199,7 @@ final class WebhookCest
                 $I->assertSame([
                     'debug' => $case['mode'] === 'ordinary',
                     'gii' => $case['mode'] === 'ordinary',
-                    'production_inactive' => true,
+                    'production_active' => true,
                 ], json_decode($process->getOutput(), true, 8, JSON_THROW_ON_ERROR));
             } else {
                 $I->assertSame(['error' => [

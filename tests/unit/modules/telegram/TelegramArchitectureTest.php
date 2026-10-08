@@ -20,6 +20,11 @@ final class TelegramArchitectureTest extends Unit
                 'yii\\', 'modules\\telegram\\infrastructure\\', 'modules\\telegram\\presentation\\',
             ]),
             ...$this->violations($root . '/core', ['modules\\telegram\\']),
+            ...$this->violations($root . '/modules/telegram', [
+                'modules\\platform\\infrastructure\\', 'modules\\platform\\presentation\\',
+                'modules\\users\\infrastructure\\', 'core\\infrastructure\\db\\',
+                'core\\infrastructure\\repository\\',
+            ]),
         ];
         self::assertSame([], $violations);
     }

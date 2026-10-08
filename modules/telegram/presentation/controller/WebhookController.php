@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace modules\telegram\presentation\controller;
 
+use modules\telegram\application\exception\InvalidTelegramUpdatePayloadException;
 use modules\telegram\application\exception\TelegramUpdateAcceptanceUnavailableException;
 use modules\telegram\application\port\IAcceptTelegramUpdate;
 use modules\telegram\infrastructure\config\InvalidTelegramWebhookConfigException;
@@ -74,6 +75,8 @@ final class WebhookController extends Controller
                 TelegramWebhookRejectionReason::INVALID_UPDATE => $this->failure(400, 'webhook_invalid_update'),
                 TelegramWebhookRejectionReason::INTERNAL_FAILURE => $this->failure(500),
             };
+        } catch (InvalidTelegramUpdatePayloadException) {
+            return $this->failure(400, 'webhook_invalid_update');
         } catch (InvalidTelegramWebhookConfigException | TelegramUpdateAcceptanceUnavailableException) {
             return $this->failure(503);
         } catch (Throwable) {

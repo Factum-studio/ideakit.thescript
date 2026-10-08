@@ -48,6 +48,18 @@ use modules\platform\application\port\IOutboxWriter;
 use modules\platform\application\route\OutboxRouteRegistry;
 use modules\platform\application\route\OutboxRoute;
 use modules\telegram\infrastructure\messaging\TelegramUpdateReceivedPayloadCodec;
+use modules\telegram\application\exception\TelegramUpdateAcceptanceIntegrityException;
+use modules\telegram\application\handler\AcceptTelegramUpdateHandler;
+use modules\telegram\application\port\IAcceptTelegramUpdate;
+use modules\telegram\application\port\ITelegramAcceptanceClock;
+use modules\telegram\application\port\ITelegramAcceptanceIdGenerator;
+use modules\telegram\application\port\ITelegramInboxStore;
+use modules\telegram\application\port\ITelegramInboxTransactionRunner;
+use modules\telegram\infrastructure\db\DbTelegramInboxStore;
+use modules\telegram\infrastructure\db\DbTelegramInboxTransactionRunner;
+use modules\telegram\infrastructure\db\TelegramAcceptanceDbFailure;
+use modules\telegram\infrastructure\identity\RamseyTelegramAcceptanceIdGenerator;
+use modules\telegram\infrastructure\time\SystemTelegramAcceptanceClock;
 use modules\platform\infrastructure\db\DbOutboxWriter;
 use modules\platform\infrastructure\db\DbWorkerExecutionGuard;
 use modules\platform\infrastructure\config\CriticalWorkerConfig;
@@ -176,6 +188,40 @@ $container->setSingleton(IOutboxWriter::class, function () use ($container) {
     }
 
     return new DbOutboxWriter($db, $container->get(OutboxRouteRegistry::class));
+});
+
+// ---------- Telegram acceptance ----------
+$container->set(ITelegramAcceptanceClock::class, SystemTelegramAcceptanceClock::class);
+$container->set(ITelegramAcceptanceIdGenerator::class, RamseyTelegramAcceptanceIdGenerator::class);
+$container->set(TelegramAcceptanceDbFailure::class);
+$container->set(ITelegramInboxStore::class, static function () use ($container): ITelegramInboxStore {
+    $db = Yii::$app->get('db');
+    if (!$db instanceof Connection) {
+        throw new TelegramUpdateAcceptanceIntegrityException();
+    }
+
+    return new DbTelegramInboxStore(
+        $db,
+        $container->get(ITelegramAcceptanceClock::class),
+        $container->get(ITelegramAcceptanceIdGenerator::class),
+        $container->get(TelegramAcceptanceDbFailure::class),
+    );
+});
+$container->set(ITelegramInboxTransactionRunner::class, static function () use ($container): ITelegramInboxTransactionRunner {
+    $db = Yii::$app->get('db');
+    if (!$db instanceof Connection) {
+        throw new TelegramUpdateAcceptanceIntegrityException();
+    }
+
+    return new DbTelegramInboxTransactionRunner($db, $container->get(TelegramAcceptanceDbFailure::class));
+});
+$container->set(IAcceptTelegramUpdate::class, static function () use ($container): IAcceptTelegramUpdate {
+    return new AcceptTelegramUpdateHandler(
+        $container->get(ITelegramInboxStore::class),
+        $container->get(ITelegramInboxTransactionRunner::class),
+        $container->get(IOutboxWriter::class),
+        $container->get(ITelegramAcceptanceIdGenerator::class),
+    );
 });
 
 // ---------- Platform broker ----------

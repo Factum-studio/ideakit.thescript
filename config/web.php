@@ -125,4 +125,7 @@ if (YII_ENV_DEV) {
     ];
 }
 
+$configureTelegramWebhook = require __DIR__ . '/telegram_webhook.php';
+$config = $configureTelegramWebhook($config);
+
 return $config;

@@ -3,9 +3,9 @@
 ## Реализованная часть
 
 Подготовлены PostgreSQL-таблицы `telegram_bot_sessions` для состояния диалога и `telegram_updates`
-для надёжного приёма входящих обновлений. HTTP-граница webhook проверена в тестовой композиции,
-но не подключена к production. Атомарный приём inbox/outbox, управление диалогом и отправка сообщений
-ещё не реализованы.
+для надёжного приёма входящих обновлений. Webhook подключён к основной web-композиции с настоящим
+атомарным inbox/outbox acceptor. Production-обработка принятых обновлений, управление диалогом
+и отправка сообщений ещё не реализованы.
 
 ## HTTP-граница webhook
 
@@ -36,10 +36,33 @@ secret — 403, метод — 405, размер — 413, media/encoding — 415
 исключаются до bootstrap; журнал содержит только безопасный reason, HTTP-статус и серверный correlation ID,
 без body, secret и исходного исключения. Обычная dev-композиция сохраняется.
 
-**Граница активации:** основной `config/web.php` не подключает fragment. Тестовый acceptor находится
-только в tests и ничего не сохраняет. Production endpoint и JWT-исключение будут подключены вместе
-с настоящим атомарным acceptor в следующем срезе #39. Этот HTTP-срез не реализует конкурентную
-дедупликацию, worker, сессии, Telegram API или административную аутентификацию.
+Основной `config/web.php` применяет fragment один раз после dev debug/gii-конфигурации.
+Endpoint и точное JWT-исключение подключены вместе с настоящим acceptor. Тестовая подмена остаётся
+только в tests для изолированной проверки HTTP gates. Обычные web/console bootstrap и разрешение
+acceptor не требуют webhook secret и не открывают сетевые соединения.
+
+## Атомарный приём inbox/outbox
+
+[AcceptTelegramUpdateHandler](../../../modules/telegram/application/handler/AcceptTelegramUpdateHandler.php)
+использует локальные порты inbox и транзакции, а также публичный `Platform IOutboxWriter`.
+DAO, transaction runner и writer получают одно PostgreSQL-соединение. Операция владеет верхнеуровневой
+транзакцией; чужая активная транзакция отклоняется без её изменения. Receipt возвращается только
+после подтверждённого commit. Ошибка до commit откатывает обе новые записи; неопределённый commit
+не разрешает успешный ответ, внутренний повтор или компенсирующее удаление.
+
+Первый приём, включая `IgnoredUpdate`, создаёт `RECEIVED` inbox с нулём попыток, без профиля и lease.
+Raw JSON сохраняется в JSONB, SHA-256 относится к исходным HTTP-байтам, время хранится в UTC,
+срок raw payload — 30 дней от приёма. Через writer создаётся намерение
+`telegram.update.received/1.0 → critical`; payload содержит только внутренний UUID inbox.
+RabbitMQ в HTTP-транзакции не вызывается.
+
+Уникальная пара `(bot_key, update_id)` защищает последовательные и конкурентные повторы.
+Первый сохранённый body остаётся исходным: duplicate не меняет payload, hash, статус, timestamps
+или TTL и не создаёт новый outbox, в том числе после терминального состояния inbox.
+Непредставимый в JSONB новый payload получает безопасный `400 webhook_invalid_update`;
+временная недоступность — `503`, нарушение целостности или неожиданная ошибка — `500`.
+Ни Users, ни сессия, ни административная identity при приёме не создаются.
+`200 {"ok":true}` подтверждает durable приём или duplicate, но не выполнение worker-ом.
 
 ## Транспортные модели
 
@@ -52,7 +75,7 @@ secret — 403, метод — 405, размер — 413, media/encoding — 415
 для некорректного JSON или недостоверного `update_id` — безопасную ошибку до записи в inbox.
 У проигнорированного callback сохраняется только ID запроса для будущего подтверждения, не его `data`.
 Данные callback в результате parser остаются непроверенными. Отдельный codec ниже может проверить
-их подпись, но parser сам его не вызывает. Production-приём, обработчики сессий и исходящее подтверждение
+их подпись, но parser сам его не вызывает. Обработчики сессий и исходящее подтверждение
 callback пока не реализованы.
 
 Отдельный классификатор сопоставляет текст `MessageUpdate` с `/start`, точным текстом
@@ -76,7 +99,7 @@ reply-кнопок `Следующая идея` и `Отменить` либо 
 
 Проверенная подпись подтверждает только целостность кнопки, но не право выполнить действие.
 Получение доверенного профиля, подключение codec к конфигурации приложения, проверки сессии и
-бизнес-доступа, production-приём и ответ на callback остаются для следующих срезов.
+бизнес-доступа и ответ на callback остаются для следующих срезов.
 
 ## Владение данными
 
@@ -115,7 +138,8 @@ Telegram владеет состоянием диалога и inbox входя�
 - Хеш payload хранится как lowercase SHA-256; число попыток не может быть отрицательным.
 
 Схема не реализует захват lease, повторные попытки, очистку payload или переходы между состояниями.
-Repository, сохраняющего Application-handler, workers и scheduler приёма пока нет.
+DAO и Application-handler реализуют только начальный durable приём. Обработчик принятых обновлений
+и scheduler пока отсутствуют.
 
 ## Миграции
 
@@ -142,14 +166,25 @@ docker compose exec -T -e APP_ENV=test -e APP_DEBUG=false -e 'DB_DSN=pgsql:host=
 и fragment с test-only acceptor: проверяет HTTP gates, receipt, отсутствие побочных эффектов,
 CSRF/JWT scope и отдельные Yii-процессы для безопасных ошибок и dev bootstrap.
 
+[Durable HTTP-тест](../../../tests/functional/modules/telegram/DurableWebhookCest.php) проверяет реальный
+commit/duplicate, JSONB-отказ, rollback и безопасные ответы/логи. [DI integration-тест](../../../tests/integration/config/TelegramAcceptanceContainerBindingsTest.php)
+проверяет production-привязки web/console, общую транзакцию и ленивый bootstrap.
+PostgreSQL-тесты [приёма](../../../tests/integration/modules/telegram/infrastructure/DbTelegramInboxAcceptanceTest.php),
+[конкуренции](../../../tests/integration/modules/telegram/infrastructure/DbTelegramInboxConcurrencyTest.php)
+и [transaction runner](../../../tests/integration/modules/telegram/infrastructure/DbTelegramInboxTransactionRunnerTest.php)
+проверяют first-body-wins, terminal duplicates, lock timeout, rollback, чужую транзакцию и неопределённый commit.
+
 После пересборки application image:
 
 ```bash
-docker compose run --rm --no-deps -e APP_ENV=test -e APP_DEBUG=false -e 'DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' -e 'TEST_DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' php-fpm vendor/bin/codecept run functional tests/functional/modules/telegram/WebhookCest.php --no-colors
-docker compose run --rm --no-deps -e APP_ENV=test -e APP_DEBUG=false -e 'DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' -e 'TEST_DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' php-fpm vendor/bin/codecept run unit tests/unit/modules/telegram --no-colors
+docker compose run --rm --no-deps -e APP_ENV=test -e APP_DEBUG=false -e 'DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' -e 'TEST_DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' -e DB_USERNAME=ideakit -e TEST_DB_USERNAME=ideakit -e DB_PASSWORD=local-development-only -e TEST_DB_PASSWORD=local-development-only php-fpm vendor/bin/codecept run functional tests/functional/modules/telegram --no-colors
+docker compose run --rm --no-deps -e APP_ENV=test -e APP_DEBUG=false -e 'DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' -e 'TEST_DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' -e DB_USERNAME=ideakit -e TEST_DB_USERNAME=ideakit -e DB_PASSWORD=local-development-only -e TEST_DB_PASSWORD=local-development-only php-fpm vendor/bin/codecept run integration tests/integration/config/TelegramAcceptanceContainerBindingsTest.php --no-colors
+docker compose run --rm --no-deps -e APP_ENV=test -e APP_DEBUG=false -e 'DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' -e 'TEST_DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' -e DB_USERNAME=ideakit -e TEST_DB_USERNAME=ideakit -e DB_PASSWORD=local-development-only -e TEST_DB_PASSWORD=local-development-only php-fpm vendor/bin/codecept run integration tests/integration/modules/telegram/infrastructure --no-colors
+docker compose run --rm --no-deps -e APP_ENV=test -e APP_DEBUG=false -e 'DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' -e 'TEST_DB_DSN=pgsql:host=postgres;port=5432;dbname=ideakit_test' -e DB_USERNAME=ideakit -e TEST_DB_USERNAME=ideakit -e DB_PASSWORD=local-development-only -e TEST_DB_PASSWORD=local-development-only php-fpm vendor/bin/codecept run unit tests/unit/modules/telegram --no-colors
 ```
 
-Полный regression требует [явного тестового окружения Platform](../platform/README.md#явное-тестовое-окружение),
+Команды используют опубликованные синтетические credentials отдельной `ideakit_test`; приём проверен
+без запущенного RabbitMQ. Полный regression требует [явного тестового окружения Platform](../platform/README.md#явное-тестовое-окружение),
 проверенных `ideakit_test` и `ideakit_transport_test`. Docker PHP 8.2.32 не подтверждает CI на PHP 8.1.
 
 Unit-тесты транспортных моделей, parser и callback codec:
