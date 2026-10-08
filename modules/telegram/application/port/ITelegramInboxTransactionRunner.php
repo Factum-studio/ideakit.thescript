@@ -4,20 +4,20 @@ declare(strict_types=1);
 
 namespace modules\telegram\application\port;
 
-use modules\telegram\application\command\AcceptTelegramUpdateCommand;
-use modules\telegram\application\dto\TelegramUpdateAcceptanceReceipt;
+use modules\telegram\application\dto\TelegramInboxReservation;
 use modules\telegram\application\exception\InvalidTelegramUpdatePayloadException;
 use modules\telegram\application\exception\TelegramUpdateAcceptanceIntegrityException;
 use modules\telegram\application\exception\TelegramUpdateAcceptanceUnavailableException;
 
-interface IAcceptTelegramUpdate
+interface ITelegramInboxTransactionRunner
 {
     /**
-     * Returns only after durable acceptance or a confirmed duplicate.
+     * Returns only after its own top-level commit; rejects an active caller transaction.
      *
-     * @throws TelegramUpdateAcceptanceUnavailableException
+     * @param callable(): TelegramInboxReservation $operation
      * @throws InvalidTelegramUpdatePayloadException
      * @throws TelegramUpdateAcceptanceIntegrityException
+     * @throws TelegramUpdateAcceptanceUnavailableException
      */
-    public function handle(AcceptTelegramUpdateCommand $command): TelegramUpdateAcceptanceReceipt;
+    public function run(callable $operation): TelegramInboxReservation;
 }
