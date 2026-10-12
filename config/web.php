@@ -23,8 +23,7 @@ $config = [
         '@core'     => dirname(__DIR__) . '/core',
         '@modules'  => dirname(__DIR__) . '/modules',
     ],
-    'on beforeRequest' => function () {
-        global $ignoreConfig;
+    'on beforeRequest' => function () use ($ignoreConfig) {
         $request = Yii::$app->request;
         $currentPath = $request->getPathInfo();
 
@@ -125,5 +124,8 @@ if (YII_ENV_DEV) {
         'class' => 'yii\gii\Module',
     ];
 }
+
+$configureTelegramWebhook = require __DIR__ . '/telegram_webhook.php';
+$config = $configureTelegramWebhook($config);
 
 return $config;
